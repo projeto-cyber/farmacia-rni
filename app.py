@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # ==============================================================================
 # 1. CONFIGURAÇÃO DA PÁGINA E ESTILIZAÇÃO CSS
@@ -63,7 +63,6 @@ st.markdown("""
     .level-baixo { background-color: #DCFCE7; color: #166534; }
     .level-medio { background-color: #FEF3C7; color: #92400E; }
     .level-alto { background-color: #FEE2E2; color: #991B1B; }
-    
     </style>
 """, unsafe_allow_html=True)
 
@@ -71,47 +70,54 @@ st.markdown("""
 # 2. FUNÇÕES DE CÁLCULO DE TTR
 # ==============================================================================
 def calcular_ttr_rosendaal(historico, min_alvo, max_alvo):
-    """Calcula o Time in Therapeutic Range (TTR) por Interpolação Linear."""
-    if len(historico) < 2:
+    """Calcula o Time in Therapeutic Range (TTR) pelo Método de Rosendaal (Interpolação Linear)."""
+    if not historico or len(historico) < 2:
         return 0.0
     
-    df = pd.DataFrame(historico)
-    df['date'] = pd.to_datetime(df['date'])
-    df = df.sort_values('date').reset_index(drop=True)
-    
-    dias_no_alvo = 0
-    dias_totais = 0
-    
-    for i in range(len(df) - 1):
-        d1, v1 = df.loc[i, 'date'], float(df.loc[i, 'value'])
-        d2, v2 = df.loc[i+1, 'date'], float(df.loc[i+1, 'value'])
+    try:
+        df = pd.DataFrame(historico)
+        df['date'] = pd.to_datetime(df['date'])
+        df['value'] = df['value'].astype(float)
+        df = df.sort_values('date').reset_index(drop=True)
         
-        dias_intervalo = (d2 - d1).days
-        if dias_intervalo <= 0:
-            continue
-            
-        passo_rni = (v2 - v1) / dias_intervalo
+        dias_no_alvo = 0.0
+        dias_totais = 0
         
-        for dia in range(dias_intervalo):
-            rni_estimado = v1 + (passo_rni * dia)
-            if min_alvo <= rni_estimado <= max_alvo:
-                dias_no_alvo += 1
-            dias_totais += 1
+        for i in range(len(df) - 1):
+            d1, v1 = df.loc[i, 'date'], df.loc[i, 'value']
+            d2, v2 = df.loc[i+1, 'date'], df.loc[i+1, 'value']
             
-    if dias_totais == 0:
+            dias_intervalo = (d2 - d1).days
+            if dias_intervalo <= 0:
+                continue
+                
+            passo_rni = (v2 - v1) / dias_intervalo
+            
+            for dia in range(dias_intervalo):
+                rni_estimado = v1 + (passo_rni * dia)
+                if min_alvo <= rni_estimado <= max_alvo:
+                    dias_no_alvo += 1.0
+                dias_totais += 1
+                
+        if dias_totais == 0:
+            return 0.0
+            
+        return (dias_no_alvo / dias_totais) * 100.0
+    except Exception:
         return 0.0
-        
-    return (dias_no_alvo / dias_totais) * 100
 
 def calcular_ttr_direto(historico, min_alvo, max_alvo):
     """Calcula a proporção direta de exames dentro do alvo."""
     if not historico:
         return 0.0, 0, 0
     
-    total_exames = len(historico)
-    exames_na_faixa = sum(1 for e in historico if min_alvo <= float(e['value']) <= max_alvo)
-    porcentagem = (exames_na_faixa / total_exames) * 100
-    return porcentagem, exames_na_faixa, total_exames
+    try:
+        total_exames = len(historico)
+        exames_na_faixa = sum(1 for e in historico if min_alvo <= float(e['value']) <= max_alvo)
+        porcentagem = (exames_na_faixa / total_exames) * 100.0
+        return porcentagem, exames_na_faixa, total_exames
+    except Exception:
+        return 0.0, 0, 0
 
 # ==============================================================================
 # 3. CARREGAMENTO E MANIPULAÇÃO DE DADOS (JSON)
@@ -148,7 +154,7 @@ paciente_nome_sel = st.sidebar.radio(
 p = next(item for item in pacientes if item["name"] == paciente_nome_sel)
 
 # ==============================================================================
-# 5. PAINEL PRINCIPAL (FICHA CLINICA DO PACIENTE)
+# 5. PAINEL PRINCIPAL (FICHA CLÍNICA DO PACIENTE)
 # ==============================================================================
 st.markdown(f"# 👤 {p['name']}")
 
@@ -156,15 +162,16 @@ col_info1, col_info2, col_info3 = st.columns([2, 2, 2])
 
 # Faixa Alvo do Paciente
 try:
-    min_alvo, max_alvo = map(float, p['target'].split('-'))
-except:
+    target_str = p.get('target', '2.0-3.0')
+    min_alvo, max_alvo = map(float, target_str.split('-'))
+except Exception:
     min_alvo, max_alvo = 2.0, 3.0
 
 # Cálculos de TTR
 ttr_valor = calcular_ttr_rosendaal(p.get('rniHistory', []), min_alvo, max_alvo)
 ttr_direto, exames_na_faixa, total_exames = calcular_ttr_direto(p.get('rniHistory', []), min_alvo, max_alvo)
 
-# Lógica Dinâmica de Cores baseada no TTR
+# Lógica Dinâmica de Cores baseada no TTR de Rosendaal
 if ttr_valor >= 70.0:
     cor_ttr = "#10B981"      # Verde (Bom controle)
     bg_badge = "#ECFDF5"     # Fundo verde claro
@@ -202,60 +209,23 @@ with col_info2:
     </div>
     """, unsafe_allow_html=True)
 
-# Renderização do Card Dinâmico de TTR na col_info3
+# Renderização sem quebras do Card HTML de TTR
 with col_info3:
-    st.markdown(f"""
-    <div style="
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    ">
-        <!-- Cabeçalho Principal -->
-        <div style="
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 12px;
-        ">
-            <span style="font-size: 0.85rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em;">
+    card_html = f"""
+    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <span style="font-size: 0.85rem; font-weight: 600; color: #64748B; text-transform: uppercase;">
                 TTR (Rosendaal)
             </span>
-            <span style="
-                font-size: 0.75rem; 
-                font-weight: 600; 
-                color: {cor_ttr}; 
-                background: {bg_badge}; 
-                padding: 2px 8px; 
-                border-radius: 9999px;
-            ">
+            <span style="font-size: 0.75rem; font-weight: 600; color: {cor_ttr}; background: {bg_badge}; padding: 2px 8px; border-radius: 9999px;">
                 {status_ttr}
             </span>
         </div>
-
-        <!-- Valor Principal Dinâmico -->
-        <div style="
-            font-size: 2.5rem; 
-            font-weight: 700; 
-            color: {cor_ttr}; 
-            line-height: 1; 
-            margin-bottom: 16px;
-            letter-spacing: -0.02em;
-        ">
+        <div style="font-size: 2.5rem; font-weight: 700; color: {cor_ttr}; line-height: 1; margin-bottom: 16px;">
             {ttr_valor:.1f}%
         </div>
-
-        <!-- Divisor Sutil -->
         <div style="border-top: 1px solid #F1F5F9; margin-bottom: 12px;"></div>
-
-        <!-- Métrica Secundária Inferior -->
-        <div style="
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-        ">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
             <div style="font-size: 0.8rem; color: #94A3B8; text-transform: uppercase; font-weight: 500;">
                 Método Comparativo
             </div>
@@ -267,7 +237,8 @@ with col_info3:
             </div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
 
 st.markdown("---")
 
