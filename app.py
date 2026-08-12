@@ -1051,94 +1051,10 @@
       {
         "id": "_l0ntc2776",
         "status": "attended"
-      }
-    ],
-    "2026-05-06": [
-      {
-        "id": "_cyz9pscrh",
-        "status": "missed"
-      },
-      {
-        "id": "_l0ntc2776",
-        "status": "scheduled"
       },
       {
         "id": "_7zitf8na7",
         "status": "attended"
-      },
-      {
-        "id": "_26wqj14yb",
-        "status": "scheduled"
-      }
-    ],
-    "2026-05-13": [
-      {
-        "id": "_g8ndq26o6",
-        "status": "scheduled"
-      },
-      {
-        "id": "_phxei56sl",
-        "status": "scheduled"
-      },
-      {
-        "id": "_1vyg8tzjo",
-        "status": "scheduled"
-      },
-      {
-        "id": "_wg71rwgor",
-        "status": "scheduled"
-      }
-    ],
-    "2026-04-22": [
-      {
-        "id": "_3fvv6if8j",
-        "status": "attended"
-      },
-      {
-        "id": "_r13z1wtz9",
-        "status": "attended"
-      },
-      {
-        "id": "_s2iihjuze",
-        "status": "attended"
-      },
-      {
-        "id": "_phxei56sl",
-        "status": "attended"
-      }
-    ],
-    "2026-04-29": [
-      {
-        "id": "_um2o7gvyr",
-        "status": "attended"
-      },
-      {
-        "id": "_wg71rwgor",
-        "status": "attended"
-      },
-      {
-        "id": "_1vyg8tzjo",
-        "status": "attended"
-      },
-      {
-        "id": "_52z4wb21g",
-        "status": "missed"
-      }
-    ],
-    "2026-05-20": [
-      {
-        "id": "_um2o7gvyr",
-        "status": "scheduled"
-      },
-      {
-        "id": "_7zitf8na7",
-        "status": "scheduled"
-      }
-    ],
-    "2026-05-27": [
-      {
-        "id": "_cyz9pscrh",
-        "status": "scheduled"
       }
     ]
   }
