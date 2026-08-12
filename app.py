@@ -2,9 +2,10 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+from datetime import datetime, timedelta
 
 # ==============================================================================
-# 1. CONFIGURAÇÃO DA PÁGINA E DESIGN CUSTOMIZADO
+# 1. CONFIGURAÇÃO DA PÁGINA E ESTILIZAÇÃO CSS
 # ==============================================================================
 st.set_page_config(
     page_title="Ambulatório de Anticoagulação - RNI",
@@ -12,7 +13,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização visual (CSS)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
@@ -21,116 +21,231 @@ st.markdown("""
         font-family: 'Poppins', sans-serif;
     }
     
-    .main-title {
-        color: #1E3A8A;
+    /* Estilização da Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #F1F5F9;
+        padding-top: 10px;
+    }
+    
+    /* Cards de Métricas e TTR */
+    .metric-card {
+        background-color: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        text-align: center;
+    }
+    
+    .ttr-header {
+        font-size: 0.9rem;
+        color: #64748B;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
+    .ttr-value {
         font-size: 2.2rem;
         font-weight: 700;
-        margin-bottom: 0px;
+        color: #0284C7;
     }
     
-    .card-paciente {
-        background-color: #F8FAFC;
-        border-left: 5px solid #2563EB;
-        padding: 15px;
-        border-radius: 8px;
-        margin-bottom: 15px;
-    }
-    
-    .badge-target {
-        background-color: #DBEAFE;
-        color: #1E40AF;
-        padding: 4px 10px;
-        border-radius: 12px;
+    /* Badge da Faixa Alvo */
+    .target-badge {
+        background-color: #E0F2FE;
+        color: #0369A1;
         font-weight: 600;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 0.9rem;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. CARREGAMENTO DO BANCO DE DADOS (JSON)
+# 2. FUNÇÃO DE CÁLCULO DE TTR (MÉTODO DE ROSENDAAL)
 # ==============================================================================
-@st.cache_data
-def carregar_dados():
+def calcular_ttr_rosendaal(historico, min_alvo, max_alvo):
+    """Calcula o Time in Therapeutic Range (TTR) por Interpolação Linear."""
+    if len(historico) < 2:
+        return 0.0
+    
+    df = pd.DataFrame(historico)
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.sort_values('date').reset_index(drop=True)
+    
+    dias_no_alvo = 0
+    dias_totais = 0
+    
+    for i in range(len(df) - 1):
+        d1, v1 = df.loc[i, 'date'], float(df.loc[i, 'value'])
+        d2, v2 = df.loc[i+1, 'date'], float(df.loc[i+1, 'value'])
+        
+        dias_intervalo = (d2 - d1).days
+        if dias_intervalo <= 0:
+            continue
+            
+        passo_rni = (v2 - v1) / dias_intervalo
+        
+        for dia in range(dias_intervalo):
+            rni_estimado = v1 + (passo_rni * dia)
+            if min_alvo <= rni_estimado <= max_alvo:
+                dias_no_alvo += 1
+            dias_totais += 1
+            
+    if dias_totais == 0:
+        return 0.0
+        
+    return (dias_no_alvo / dias_totais) * 100
+
+# ==============================================================================
+# 3. CARREGAMENTO E MANIPULAÇÃO DE DADOS (JSON)
+# ==============================================================================
+if "dados" not in st.session_state:
     if os.path.exists("dados.json"):
         with open("dados.json", "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"patients": [], "agenda": {}}
+            st.session_state.dados = json.load(f)
+    else:
+        st.session_state.dados = {"patients": [], "agenda": {}}
 
-dados = carregar_dados()
-pacientes = dados.get("patients", [])
+pacientes = st.session_state.dados.get("patients", [])
+
+# Ordenar pacientes em ordem alfabética pelo nome
+pacientes = sorted(pacientes, key=lambda x: x['name'])
 
 # ==============================================================================
-# 3. CABEÇALHO DO APLICATIVO
+# 4. PAINEL ESQUERDO (SIDEBAR - LISTA DE PACIENTES)
 # ==============================================================================
-st.markdown('<h1 class="main-title">🩸 Sistema de Controle de Anticoagulação (Varfarina)</h1>', unsafe_allow_html=True)
-st.caption("Painel de Acompanhamento Ambulatorial de Farmácia Clínica")
+st.sidebar.title("🩺 Pacientes")
+st.sidebar.caption(f"Total: {len(pacientes)} cadastrados")
+
+nombres_pacientes = [p['name'] for p in pacientes]
+
+if not nombres_pacientes:
+    st.warning("Nenhum paciente cadastrado no banco de dados.")
+    st.stop()
+
+# Seleção do Paciente na Barra Esquerda
+paciente_nome_sel = st.sidebar.radio(
+    "Selecione para abrir a ficha:",
+    nombres_pacientes,
+    index=0
+)
+
+# Recupera o objeto completo do paciente selecionado
+p = next(item for item in pacientes if item["name"] == paciente_nome_sel)
+
+# ==============================================================================
+# 5. PAINEL PRINCIPAL (FICHA CLINICA DO PACIENTE)
+# ==============================================================================
+
+# Cabeçalho do Paciente
+st.markdown(f"# 👤 {p['name']}")
+
+col_info1, col_info2, col_info3 = st.columns([2, 2, 2])
+
+with col_info1:
+    st.write(f"**Idade:** {p.get('age', 'N/A')} anos")
+    st.write(f"**Contato:** {p.get('contact', 'Não informado')}")
+    st.write(f"**Complexidade:** {p.get('level', 'N/A')}")
+
+with col_info2:
+    st.write(f"**Indicação:** {p.get('indication', 'N/A')}")
+    st.write(f"**Organizador de Comprimidos:** {p.get('organizer', 'Não')}")
+    st.write(f"**Dose Semanal Atual:** {p.get('weeklyDose', p.get('doseCurrent', 0))} mg")
+
+# Faixa Alvo e Cálculo de TTR
+try:
+    min_alvo, max_alvo = map(float, p['target'].split('-'))
+except:
+    min_alvo, max_alvo = 2.0, 3.0
+
+ttr_valor = calcular_ttr_rosendaal(p.get('rniHistory', []), min_alvo, max_alvo)
+
+with col_info3:
+    st.markdown(f"""
+    <div class="metric-card">
+        <div class="ttr-header">TTR (Método Rosendaal)</div>
+        <div class="ttr-value">{ttr_valor:.1f}%</div>
+        <div>Faixa Alvo: <span class="target-badge">{p.get('target', '2.0-3.0')}</span></div>
+    </div>
+    """, unsafe_allow_html=True)
+
 st.markdown("---")
 
 # ==============================================================================
-# 4. NAVEGAÇÃO E VISUALIZAÇÃO DOS PACIENTES
+# 6. GRÁFICO DE ACOMPANHAMENTO E ADIÇÃO DE NOVO RNI
 # ==============================================================================
-st.sidebar.header("🔍 Filtros & Navegação")
-opcoes_pacientes = [f"{p['name']} (ID: {p['id']})" for p in pacientes]
+col_grafico, col_novo_rni = st.columns([2, 1])
 
-if not opcoes_pacientes:
-    st.warning("Nenhum paciente encontrado no arquivo dados.json.")
-else:
-    paciente_selecionado_str = st.sidebar.selectbox("Selecione um Paciente:", opcoes_pacientes)
-    idx_selecionado = opcoes_pacientes.index(paciente_selecionado_str)
-    p = pacientes[idx_selecionado]
+with col_grafico:
+    st.subheader("📈 Gráfico de Acompanhamento do RNI")
+    
+    if p.get('rniHistory'):
+        df_rni = pd.DataFrame(p['rniHistory'])
+        df_rni['date'] = pd.to_datetime(df_rni['date'])
+        df_rni['value'] = df_rni['value'].astype(float)
+        df_rni = df_rni.sort_values('date')
+        
+        # Adiciona limites da faixa para o gráfico
+        df_rni['Limite Inferior'] = min_alvo
+        df_rni['Limite Superior'] = max_alvo
+        
+        st.line_chart(
+            df_rni.set_index('date')[['value', 'Limite Inferior', 'Limite Superior']],
+            color=["#0284C7", "#10B981", "#10B981"],
+            height=300
+        )
+    else:
+        st.info("Nenhum histórico de RNI para gerar o gráfico.")
 
-    # --- PAINEL PRINCIPAL DO PACIENTE ---
-    col1, col2 = st.columns([2, 1])
+with col_novo_rni:
+    st.subheader("➕ Lançar Novo RNI")
+    
+    with st.form("form_novo_rni", clear_on_submit=True):
+        nova_data = st.date_input("Data da Coleta", value=datetime.today())
+        novo_rni = st.number_input("Valor do RNI", min_value=0.5, max_value=10.0, step=0.1, value=2.5)
+        
+        btn_adicionar = st.form_submit_button("Salvar Exame")
+        
+        if btn_adicionar:
+            novo_registro = {
+                "date": nova_data.strftime("%Y-%m-%d"),
+                "value": float(novo_rni)
+            }
+            
+            # Adiciona ao histórico do paciente
+            p['rniHistory'].insert(0, novo_registro)
+            
+            # Salva de volta no arquivo JSON
+            with open("dados.json", "w", encoding="utf-8") as f:
+                json.dump(st.session_state.dados, f, ensure_ascii=False, indent=2)
+                
+            st.success("RNI adicionado com sucesso!")
+            st.rerun()
 
-    with col1:
-        st.subheader(f"👤 {p['name']}")
-        st.write(f"**Idade:** {p['age']} anos | **Contato:** {p.get('contact', 'Não informado')}")
-        st.write(f"**Indicação Clínica:** {p['indication']}")
-        st.markdown(f"**Faixa Alvo de RNI:** <span class='badge-target'>{p['target']}</span>", unsafe_allow_html=True)
-        st.write(f"**Esquema Posológico Atual:** {p['doseCurrent']} mg/semana")
+st.markdown("---")
 
-    with col2:
-        st.metric(label="Último RNI Registrado", value=p['rniHistory'][0]['value'] if p['rniHistory'] else "N/A")
-        st.write(f"**Complexidade do Paciente:** {p['level']}")
-        st.write(f"**Usa Organizador de Comprimidos:** {p['organizer']}")
+# ==============================================================================
+# 7. HISTÓRICO DE EXAMES E EVOLUÇÃO FARMACÊUTICA
+# ==============================================================================
+tab_tabela, tab_evolucao, tab_meds = st.tabs(["📋 Histórico de Coletas", "📝 Evolução Farmacêutica", "💊 Medicamentos em Uso"])
 
-    st.markdown("---")
+with tab_tabela:
+    if p.get('rniHistory'):
+        df_hist = pd.DataFrame(p['rniHistory'])
+        df_hist['date'] = pd.to_datetime(df_hist['date']).dt.strftime('%d/%m/%Y')
+        df_hist.columns = ['Data da Coleta', 'Valor do RNI']
+        st.dataframe(df_hist, use_container_width=True)
+    else:
+        st.info("Sem registros no histórico.")
 
-    # --- HISTÓRICO DE RNI E GRÁFICO ---
-    tab1, tab2, tab3 = st.tabs(["📊 Evolução do RNI", "📝 Evolução Farmacêutica", "💊 Medicamentos em Uso"])
+with tab_evolucao:
+    if p.get('evolution'):
+        st.text_area("Registro da Última Evolução:", p['evolution'], height=250)
+    else:
+        st.info("Nenhuma evolução registrada para este paciente.")
 
-    with tab1:
-        if p.get('rniHistory'):
-            df_rni = pd.DataFrame(p['rniHistory'])
-            df_rni['date'] = pd.to_datetime(df_rni['date'])
-            df_rni = df_rni.sort_values('date')
-
-            # Extrai os limites da faixa alvo
-            try:
-                min_alvo, max_alvo = map(float, p['target'].split('-'))
-            except:
-                min_alvo, max_alvo = 2.0, 3.0
-
-            df_rni['Alvo Mínimo'] = min_alvo
-            df_rni['Alvo Máximo'] = max_alvo
-
-            st.markdown("### Gráfico de Tendência do RNI")
-            st.line_chart(
-                df_rni.set_index('date')[['value', 'Alvo Mínimo', 'Alvo Máximo']],
-                color=["#2563EB", "#059669", "#059669"]
-            )
-
-            st.markdown("### Tabela de Exames")
-            st.dataframe(df_rni[['date', 'value']].rename(columns={'date': 'Data da Coleta', 'value': 'RNI'}), use_container_width=True)
-        else:
-            st.info("Nenhum histórico de RNI registrado para este paciente.")
-
-    with tab2:
-        if p.get('evolution'):
-            st.text_area("Registro da Última Consulta:", p['evolution'], height=300)
-        else:
-            st.info("Nenhuma evolução registrada recentemente.")
-
-    with tab3:
-        st.write("**Outros Medicamentos Relatados:**")
-        st.info(p.get('meds', 'Nenhum outro medicamento registrado.'))
+with tab_meds:
+    st.write("**Farmacoterapia Habitual:**")
+    st.info(p.get('meds') if p.get('meds') else "Nenhum medicamento adicional registrado.")
