@@ -11,6 +11,86 @@ st.set_page_config(
     page_title="Ambulatório de Anticoagulação - RNI",
     page_icon="🩸",
     layout="wide"
+    # 1. Lógica de Cores Dinâmica para o TTR
+# Define a cor com base no valor do TTR de Rosendaal
+if ttr_valor >= 70.0:
+    cor_ttr = "#10B981"      # Verde (Bom controle)
+    bg_badge = "#ECFDF5"     # Fundo verde claro
+elif ttr_valor >= 60.0:
+    cor_ttr = "#F59E0B"      # Amarelo/Laranja (Alerta)
+    bg_badge = "#FFFBEB"     # Fundo amarelo claro
+else:
+    cor_ttr = "#EF4444"      # Vermelho (Crítico)
+    bg_badge = "#FEF2F2"     # Fundo vermelho claro
+
+# 2. Renderização do Card no Streamlit
+with col_info3:
+    st.markdown(f"""
+    <div style="
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        max-width: 320px;
+    ">
+        <!-- Cabeçalho Principal -->
+        <div style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        ">
+            <span style="font-size: 0.85rem; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.05em;">
+                TTR (Rosendaal)
+            </span>
+            <span style="
+                font-size: 0.75rem; 
+                font-weight: 600; 
+                color: {cor_ttr}; 
+                background: {bg_badge}; 
+                padding: 2px 8px; 
+                border-radius: 9999px;
+            ">
+                { 'Estável' if ttr_valor >= 70.0 else 'Alerta' if ttr_valor >= 60.0 else 'Crítico' }
+            </span>
+        </div>
+
+        <!-- Valor Principal Dinâmico -->
+        <div style="
+            font-size: 2.5rem; 
+            font-weight: 700; 
+            color: {cor_ttr}; 
+            line-height: 1; 
+            margin-bottom: 16px;
+            letter-spacing: -0.02em;
+        ">
+            {ttr_valor:.1f}%
+        </div>
+
+        <!-- Divisor Sutil -->
+        <div style="border-top: 1px solid #F1F5F9; margin-bottom: 12px;"></div>
+
+        <!-- Métrica Secundária Inferior -->
+        <div style="
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        ">
+            <div style="font-size: 0.8rem; color: #94A3B8; text-transform: uppercase; font-weight: 500;">
+                Método Comparativo
+            </div>
+            <div style="font-size: 0.87rem; color: #334155;">
+                TTR Direto: <b style="color: #0F172A;">{ttr_direto:.1f}%</b> 
+                <span style="color: #64748B; font-size: 0.8rem; margin-left: 4px;">
+                    ({exames_na_faixa}/{total_exames} exames)
+                </span>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 )
 
 st.markdown("""
