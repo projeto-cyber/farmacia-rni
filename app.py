@@ -1,4 +1,4 @@
-      "age": 89,
+
       "admission": "2024-09-27",
       "level": "Alto",
       "organizer": "Sim",
