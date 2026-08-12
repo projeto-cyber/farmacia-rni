@@ -1,284 +1,1055 @@
-import streamlit as st
-import pandas as pd
-from datetime import datetime, date
-
-# ==============================================================================
-# 1. CONFIGURAÇÃO DA PÁGINA E ESTILIZAÇÃO CUSTOMIZADA (CSS & DESIGN)
-# ==============================================================================
-st.set_page_config(
-    page_title="Gestão de Anticoagulação - RNI",
-    page_icon="🩸",
-    layout="wide"
-)
-
-# Injeção de CSS personalizado para fontes, cores, cards e caixas de informação
-st.markdown("""
-    <style>
-    /* Importação de Fonte Google (Roboto / Poppins) */
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
-
-    html, body, [class*="css"] {
-        font-family: 'Poppins', sans-serif;
+      "age": 89,
+      "admission": "2024-09-27",
+      "level": "Alto",
+      "organizer": "Sim",
+      "indication": "Fibrilação Atrial",
+      "target": "2.0-3.0",
+      "pillPref": "ambos",
+      "dosePrev": 32.5,
+      "dosePrevDate": "2026-03-03",
+      "doseCurrent": 32.5,
+      "doseCurrentDate": "2026-04-08",
+      "weeklyDose": 32.5,
+      "meds": "Furosemida, Enalapril, Digoxina, vitamina D3, Propafenona",
+      "prevReloginho": [
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "2,5mg"
+      ],
+      "currentReloginho": [
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg + 1 comp. de 2,5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-04-29",
+          "value": 1.4
+        },
+        {
+          "date": "2026-04-08",
+          "value": 2
+        },
+        {
+          "date": "2026-03-03",
+          "value": 1.1
+        },
+        {
+          "date": "2026-01-06",
+          "value": 2.2
+        },
+        {
+          "date": "2025-11-25",
+          "value": 1.8
+        },
+        {
+          "date": "2025-10-28",
+          "value": 3
+        },
+        {
+          "date": "2025-10-07",
+          "value": 1.8
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_52z4wb21g",
+      "name": "Celio Elder Rodrigues Amaral",
+      "contact": "",
+      "birthDate": "1969-04-15",
+      "age": 57,
+      "admission": "2026-02-24",
+      "level": "Médio",
+      "organizer": "Não",
+      "indication": "Prótese Mecânica Mitral",
+      "target": "2.5-3.5",
+      "pillPref": "5mg",
+      "dosePrev": 60,
+      "dosePrevDate": "2026-02-24",
+      "doseCurrent": 60,
+      "doseCurrentDate": "2026-03-18",
+      "weeklyDose": 60,
+      "meds": "FUROSEMIDA, ESPIRONOLACTONA, VALSARTANA, BISOPROLOL, METFORMINA, INSULINA NPH, ÁCIDO ACETILSALICÍLICO, SINVASTATINA ",
+      "prevReloginho": [
+        "2x5 mg",
+        "2x5 mg",
+        "2x5 mg",
+        "5 mg",
+        "2x5 mg",
+        "5 mg",
+        "2x5 mg"
+      ],
+      "currentReloginho": [
+        "2 comp. de 5mg",
+        "2 comp. de 5mg",
+        "1 comp. de 5mg + Metade do comp. de 5mg",
+        "2 comp. de 5mg",
+        "2 comp. de 5mg",
+        "1 comp. de 5mg + Metade do comp. de 5mg",
+        "2 comp. de 5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-04-15",
+          "value": 1.8
+        },
+        {
+          "date": "2026-03-18",
+          "value": 3.2
+        },
+        {
+          "date": "2026-02-24",
+          "value": 3.2
+        },
+        {
+          "date": "2026-02-03",
+          "value": 1.2
+        },
+        {
+          "date": "2025-10-30",
+          "value": 1.8
+        },
+        {
+          "date": "2025-10-09",
+          "value": 1.8
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "Evolução Farmacêutica - 15/04/2026\n\nPaciente em acompanhamento pela farmácia clínica há 1 mês(es). Comparece hoje para acompanhamento da anticoagulação oral. \n- RNI Atual: 1.80 (Coletado em 15/04/2026)\n- RNI Anterior: 3.20 (Coletado em 18/03/2026)\n- Intervalo entre os exames: 28 dias.\n\nAnamnese e Adesão:\n- Sangramentos: Nega ocorrência.\n- Sinais de Trombose: Nega ocorrência.\n- Internações/Procedimentos: Não houve necessidade de busca à urgência.\n- Hábito Alimentar (Vit. K): Sem alterações significativas relatadas.\n- Uso de Fármacos/Produtos Naturais: Atenção para possível interação com: sinvastatina (Possível justificativa para alteração de RNI).\n- Esquecimento de Doses: Omissão de dose - Não se lembra qual o dia\n- Presença e Faltas: Boa adesão ao cronograma do ambulatório (sem faltas).\n- Nível de compreensão do tratamento: Moderado. Não utiliza organizador de comprimidos, recebe auxilio de filha para tomar os medicamentos.\n\nConduta Farmacêutica:\n- Dose Semanal Anterior: 60 mg.\n- Conduta: Manutenção da dose atual\n- Nova Dose Semanal (Atual): 60 mg.\n- Como tomar: 2 comp. de 5mg (Segunda, Terça, Quarta, Sexta e domingo); 1 comp. de 5 mg (Quinta, Sábado);\n- Dispensação: Não dispensamos nenhum comprimido. paciente relata ter muitos em casa, pedimos para trazer na próxima consulta para verificação.\n- Próxima Consulta (Retorno): 29/04/2026 (Intervalo estipulado conforme critérios de estabilidade do Protocolo PBH).\n- Orientações repassadas quanto a horários da medicação, constância na alimentação e sinais de alerta.\n- Relógio de prescrição visual impresso, ajustado e entregue ao paciente.",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_s2iihjuze",
+      "name": "Conceição Tânia Messias",
+      "contact": "99184-1417",
+      "birthDate": "1955-10-22",
+      "age": 70,
+      "admission": "2021-11-11",
+      "level": "Médio",
+      "organizer": "Sim",
+      "indication": "TVP/TEP",
+      "target": "2.0-3.0",
+      "pillPref": "2.5mg",
+      "dosePrev": 25,
+      "dosePrevDate": "2026-02-18",
+      "doseCurrent": 27.5,
+      "doseCurrentDate": "2026-04-08",
+      "weeklyDose": 27.5,
+      "meds": "furosemida, hidralazina, isossorbida, losartana, clonidina, Loratadina ",
+      "prevReloginho": [
+        "2X2,5MG",
+        "2,5MG",
+        "2X2,5MG",
+        "2,5MG",
+        "2X2,5MG",
+        "2,5MG",
+        "2,5MG"
+      ],
+      "currentReloginho": [
+        "2 comp. de 2,5mg",
+        "1 comp. de 2,5mg",
+        "2 comp. de 2,5mg",
+        "1 comp. de 2,5mg",
+        "2 comp. de 2,5mg",
+        "1 comp. de 2,5mg",
+        "2 comp. de 2,5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-04-22",
+          "value": 1.8
+        },
+        {
+          "date": "2026-04-08",
+          "value": 3.6
+        },
+        {
+          "date": "2026-02-18",
+          "value": 1.5
+        },
+        {
+          "date": "2026-01-20",
+          "value": 1.7
+        },
+        {
+          "date": "2025-11-25",
+          "value": 2.5
+        },
+        {
+          "date": "2025-10-21",
+          "value": 1.3
+        },
+        {
+          "date": "2025-09-23",
+          "value": 1.4
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "",
+      "checklist": {
+        "bleeding": "Sim",
+        "bleedingDetails": "Relata sangramento urinário persistente(faz acompanhamento a mais de 30 anos)",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_cyz9pscrh",
+      "name": "Danielle Medeiros Silva",
+      "contact": "(31) 98529-2522",
+      "birthDate": "1994-09-21",
+      "age": 31,
+      "admission": "2025-04-15",
+      "level": "Baixo",
+      "organizer": "Não",
+      "indication": "Prótese Mecânica Mitral",
+      "target": "2.5-3.5",
+      "pillPref": "ambos",
+      "dosePrev": 42.5,
+      "dosePrevDate": "2026-02-18",
+      "doseCurrent": 42.5,
+      "doseCurrentDate": "2026-04-02",
+      "weeklyDose": 42.5,
+      "meds": "Amiodarona 200 mg (1-0-1), Diltiazem 60 mg (1-0-0), Sertralina 50 mg (1-0-0), Medroxiprogesterona (1 a cada 3 meses)",
+      "prevReloginho": [
+        "5MG",
+        "5mg + 2,5mg",
+        "5mg + 2,5mg",
+        "5MG",
+        "5mg + 2,5mg",
+        "5MG",
+        "5MG"
+      ],
+      "currentReloginho": [
+        "1 comp. de 5mg + 1 comp. de 2,5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg + 1 comp. de 2,5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg + 1 comp. de 2,5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-04-02",
+          "value": 2.9
+        },
+        {
+          "date": "2026-02-18",
+          "value": 1.9
+        },
+        {
+          "date": "2025-12-02",
+          "value": 2.8
+        },
+        {
+          "date": "2025-09-30",
+          "value": 2.7
+        },
+        {
+          "date": "2025-08-12",
+          "value": 2.5
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_g8ndq26o6",
+      "name": "Eunice Gonçalves Fernandes",
+      "contact": "",
+      "birthDate": "1973-01-09",
+      "age": 53,
+      "admission": "2025-11-04",
+      "level": "Médio",
+      "organizer": "Não",
+      "indication": "Prótese Mecânica Mitral",
+      "target": "2.5-3.5",
+      "pillPref": "5mg",
+      "dosePrev": 42.5,
+      "dosePrevDate": "2026-01-20",
+      "doseCurrent": 42.5,
+      "doseCurrentDate": "2026-03-18",
+      "weeklyDose": 42.5,
+      "meds": "Metoprolol 25mg 1-0-1 (no receituário 2-0-2), Losartana 25mg 0-0-1, Sertralina 50mg 1-0-0, Dapagliflozina 10mg 1-0-0, Espironolactona 25mg 1-0-0, Pantoprazol 40mg 1-0-0, Furosemida 40mg 0-1-0",
+      "prevReloginho": [
+        "5mg",
+        "5mg",
+        "5mg + metade de 5mg",
+        "5mg + metade de 5mg",
+        "5mg",
+        "5mg + metade de 5mg",
+        "5mg"
+      ],
+      "currentReloginho": [
+        "1 comp. de 5mg + Metade do comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg + Metade do comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg + Metade do comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-01-20",
+          "value": 3.2
+        },
+        {
+          "date": "2025-12-10",
+          "value": 3.2
+        },
+        {
+          "date": "2025-11-04",
+          "value": 2.6
+        },
+        {
+          "date": "2025-09-23",
+          "value": 3.2
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_l0ntc2776",
+      "name": "José Antônio Marciano",
+      "contact": "3638-4041",
+      "birthDate": "1962-08-12",
+      "age": 63,
+      "admission": "2022-05-20",
+      "level": "Médio",
+      "organizer": "Não",
+      "indication": "Fibrilação Atrial",
+      "target": "2.0-3.0",
+      "pillPref": "ambos",
+      "dosePrev": 30,
+      "dosePrevDate": "2026-03-03",
+      "doseCurrent": 27.5,
+      "doseCurrentDate": "2026-03-25",
+      "weeklyDose": 27.5,
+      "meds": "Atenolol 25mg MID, Losartana 25mg BID, Anlodipino 10mg MID, Furosemida 40mg MID, Dapaglifozina 10mg MID, Hidralazina 100mg TID, Metformina 500mg BID, Sinvastatina 20mg MID, Gabapentina 300mg MID",
+      "prevReloginho": [
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        ""
+      ],
+      "currentReloginho": [
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 2,5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 2,5mg",
+        "1 comp. de 5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-05-06",
+          "value": 2.1
+        },
+        {
+          "date": "2026-04-15",
+          "value": 3.5
+        },
+        {
+          "date": "2026-03-25",
+          "value": 4.2
+        },
+        {
+          "date": "2026-03-03",
+          "value": 5.4
+        },
+        {
+          "date": "2026-02-10",
+          "value": 3.2
+        },
+        {
+          "date": "2026-01-19",
+          "value": 2
+        },
+        {
+          "date": "2026-01-14",
+          "value": 1.1
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "Evolução Farmacêutica - 15/04/2026\n\nPaciente em acompanhamento pela farmácia clínica há 3 ano(s) e 11 mês(es). Comparece hoje para acompanhamento da anticoagulação oral. \n- RNI Atual: 3.50 (Coletado em 15/04/2026)\n- RNI Anterior: 4.20 (Coletado em 25/03/2026)\n- Intervalo entre os exames: 21 dias.\n\nAnamnese e Adesão:\n- Sangramentos: Nega ocorrência.\n- Sinais de Trombose: Nega ocorrência.\n- Internações/Procedimentos: Não houve necessidade de busca à urgência.\n- Hábito Alimentar (Vit. K): Sem alterações significativas relatadas.\n- Uso de Fármacos/Produtos Naturais: Atenção para possível interação com: sinvastatina (Possível justificativa para alteração de RNI).\n- Esquecimento de Doses: Nega esquecimento de doses (boa adesão referida).\n- Presença e Faltas: Boa adesão ao cronograma do ambulatório (sem faltas).\n- Nível de compreensão do tratamento: Moderado. Não utiliza organizador de comprimidos.\n\nConduta Farmacêutica:\n- Dose Semanal Anterior: 30 mg.\n- Ajuste de Dose: Redução de ~8% na dose semanal (conforme Quadro 3 do Protocolo PBH)\n- Nova Dose Semanal (Atual): 27.5 mg.\n- Como tomar: 1 comp. de 5mg (Segunda, Quarta, Sexta, Domingo); 1 comp. de 2,5mg (Terça, Quinta, Sábado).\n- Dispensação: 13 comprimido(s) de 5mg e 9 comprimido(s) de 2,5mg (quantidade total para tratamento de 22 dias).\n- Próxima Consulta (Retorno): 06/05/2026 (Intervalo estipulado conforme critérios de estabilidade do Protocolo PBH).\n- Orientações repassadas quanto a horários da medicação, constância na alimentação e sinais de alerta.\n- Relógio de prescrição visual impresso, ajustado e entregue ao paciente.",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_7zitf8na7",
+      "name": "Juscilene de Oliveira",
+      "contact": "",
+      "birthDate": "1969-04-04",
+      "age": 57,
+      "admission": "2026-04-07",
+      "level": "Alto",
+      "organizer": "Não",
+      "indication": "Valvulopatia Reumática",
+      "target": "2.5-3.5",
+      "pillPref": "5mg",
+      "dosePrev": 35,
+      "dosePrevDate": "2026-03-04",
+      "doseCurrent": 32.4,
+      "doseCurrentDate": "",
+      "weeklyDose": 32.4,
+      "meds": "",
+      "prevReloginho": [
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg"
+      ],
+      "currentReloginho": [
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "Metade do comp. de 5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-04-15",
+          "value": 3.6
+        },
+        {
+          "date": "2026-03-04",
+          "value": 3.7
+        },
+        {
+          "date": "2026-02-11",
+          "value": 3.7
+        },
+        {
+          "date": "2026-01-28",
+          "value": 3.1
+        },
+        {
+          "date": "2026-01-07",
+          "value": 1.5
+        },
+        {
+          "date": "2025-12-24",
+          "value": 2.1
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "Evolução Farmacêutica - 15/04/2026\n\nPaciente em acompanhamento pela farmácia clínica. Comparece hoje para acompanhamento da anticoagulação oral de forma espontânea, pois perdeu a última consulta e não conseguiu remarcar por telefone. Acolhemos a paciente. \n- RNI Atual: 3.60 (Coletado em 15/04/2026)\n- RNI Anterior: 3.70 (Coletado em 04/03/2026)\n- Intervalo entre os exames: 42 dias.\n\nAnamnese e Adesão:\n- Sangramentos: SIM - Mancha roxa na perta esquerda, sumiu de forma espontânea. Relata sentir gosto de sangue ao escovar os dentes às vezes.\n- Sinais de Trombose: Nega ocorrência.\n- Internações/Procedimentos: Não houve necessidade de busca à urgência.\n- Hábito Alimentar (Vit. K): Sem alterações significativas relatadas.\n- Uso de Fármacos/Produtos Naturais: Sem introdução de novos medicamentos ou interações medicamentosas graves relatadas no momento.\n- Esquecimento de Doses: Omissão de dose - Esqueceu de tomar um dia, especificamente na páscoa\n- Presença e Faltas: Uma falta.\n- Nível de compreensão do tratamento: Prejudicado/Vulnerável (exige maior atenção). Não utiliza organizador de comprimidos.\n\nConduta Farmacêutica:\n- Dose Semanal Anterior: 35 mg.\n- Conduta: Manutenção da dose atual (conforme Quadro 4 do Protocolo PBH)\n- Nova Dose Semanal (Atual): 35 mg.\n- Como tomar: 1 comp. de 5mg (todos os dias da semana).\n- Dispensação: 30 comprimido(s) de 5mg (quantidade total para tratamento até próxima consulta).\n- Próxima Consulta (Retorno): 06/05/2026 (Intervalo estipulado conforme critérios de estabilidade do Protocolo PBH).\n- Orientações repassadas quanto a horários da medicação, constância na alimentação e sinais de alerta.\n- Relógio de prescrição visual impresso, ajustado e entregue ao paciente.",
+      "checklist": {
+        "bleeding": "Sim",
+        "bleedingDetails": "Mancha roxa na perta esquerda, sumiu de forma espontânea. Gosto de sangue ao escovar os dentes.",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_3fvv6if8j",
+      "name": "Maria das Mercez Figueiredo",
+      "contact": "",
+      "birthDate": "1953-09-24",
+      "age": 72,
+      "admission": "2025-01-17",
+      "level": "Médio",
+      "organizer": "Sim",
+      "indication": "Prótese Mecânica Mitral",
+      "target": "2.5-3.5",
+      "pillPref": "2.5mg",
+      "dosePrev": 10,
+      "dosePrevDate": "2026-03-03",
+      "doseCurrent": 12.5,
+      "doseCurrentDate": "2026-03-25",
+      "weeklyDose": 12.5,
+      "meds": "",
+      "prevReloginho": [
+        "2,5mg",
+        "2,5mg",
+        "2,5mg",
+        "2,5mg",
+        "2,5mg",
+        "",
+        ""
+      ],
+      "currentReloginho": [
+        "1 comp. de 2,5mg",
+        "Pausa (Não tomar)",
+        "1 comp. de 2,5mg",
+        "Pausa (Não tomar)",
+        "1 comp. de 2,5mg",
+        "Pausa (Não tomar)",
+        "1 comp. de 2,5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-04-22",
+          "value": 2.5
+        },
+        {
+          "date": "2026-03-25",
+          "value": 2.2
+        },
+        {
+          "date": "2026-03-03",
+          "value": 2.2
+        },
+        {
+          "date": "2026-02-11",
+          "value": 2
+        },
+        {
+          "date": "2026-02-09",
+          "value": 4.5
+        },
+        {
+          "date": "2026-02-07",
+          "value": 6.2
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Sim",
+        "thrombosisDetails": "dor no peito com queimação, com uma frequencia constante, foi relatado para cardiologista(faz acompanhamento)",
+        "diet": "Sim",
+        "dietDetails": "permanece tomando chá de Moringa, sem horario específico (em torno de 3 a 4x)",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Sim",
+        "newMedsDetails": "Dapaglifozina 10mg - 1-0-0  "
+      }
+    },
+    {
+      "id": "_um2o7gvyr",
+      "name": "Maria Domância Pires",
+      "contact": "",
+      "birthDate": "1936-04-25",
+      "age": 90,
+      "admission": "2020-10-23",
+      "level": "Médio",
+      "organizer": "Não",
+      "indication": "Fibrilação Atrial",
+      "target": "2.0-3.0",
+      "pillPref": "ambos",
+      "dosePrev": 37.5,
+      "dosePrevDate": "2026-03-11",
+      "doseCurrent": 37.5,
+      "doseCurrentDate": "2026-04-01",
+      "weeklyDose": 37.5,
+      "meds": "Enalapril 20mg 1 cp de 12/12h, Espirononlacton 25mg 1 cp 24/24h, Levotiroxina 100mcg 1 cp pela manhã em jejum, Levotiroxina 50mcg 1 cp pela manhã em jejum, Anlodipino 5mg 1 cp 24/24hs, Risperidona 1mg 1 cp à noite, Citalopram 20mg 1 cp pela manhã",
+      "prevReloginho": [
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg + 2,5mg",
+        "5mg"
+      ],
+      "currentReloginho": [
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg + 1 comp. de 2,5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-04-29",
+          "value": 2.4
+        },
+        {
+          "date": "2026-04-01",
+          "value": 2.1
+        },
+        {
+          "date": "2026-03-11",
+          "value": 1.4
+        },
+        {
+          "date": "2026-02-18",
+          "value": 1.2
+        },
+        {
+          "date": "2026-02-10",
+          "value": 7.7
+        },
+        {
+          "date": "2025-12-16",
+          "value": 2
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_r13z1wtz9",
+      "name": "Nilza Maria da Silva e Souza",
+      "contact": "",
+      "birthDate": "1968-08-28",
+      "age": 57,
+      "admission": "2025-10-28",
+      "level": "Baixo",
+      "organizer": "Não",
+      "indication": "Prótese Mecânica Mitral",
+      "target": "2.5-3.5",
+      "pillPref": "5mg",
+      "dosePrev": 35,
+      "dosePrevDate": "2026-03-11",
+      "doseCurrent": 35,
+      "doseCurrentDate": "2026-03-25",
+      "weeklyDose": 35,
+      "meds": "Atenolol 25 mg (1-0-1), Escitalopram 15 mg (1-0-0), AAS 100 mg (0-1-0), Sinvastatina 40 mg (0-0-1)",
+      "prevReloginho": [
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg"
+      ],
+      "currentReloginho": [
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "Metade do comp."
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-04-22",
+          "value": 4.1
+        },
+        {
+          "date": "2026-03-25",
+          "value": 2.9
+        },
+        {
+          "date": "2026-03-11",
+          "value": 4.1
+        },
+        {
+          "date": "2026-03-03",
+          "value": 2.9
+        },
+        {
+          "date": "2026-02-03",
+          "value": 3.2
+        },
+        {
+          "date": "2026-01-06",
+          "value": 4.3
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_phxei56sl",
+      "name": "THAMIRES LEMOS RIBEIRO",
+      "contact": "",
+      "birthDate": "1998-05-10",
+      "age": 27,
+      "admission": "2024-09-27",
+      "level": "Alto",
+      "organizer": "Sim",
+      "indication": "Trombo Intracardíaco",
+      "target": "2.0-3.0",
+      "pillPref": "ambos",
+      "dosePrev": 30,
+      "dosePrevDate": "2026-02-24",
+      "doseCurrent": 30,
+      "doseCurrentDate": "2026-04-08",
+      "weeklyDose": 30,
+      "meds": "",
+      "prevReloginho": [
+        "5mg",
+        "5mg",
+        "1 comp. de 2,5mg",
+        "5mg",
+        "5mg",
+        "1 comp. de 2,5mg",
+        "5mg"
+      ],
+      "currentReloginho": [
+        "1 comp. de 5mg",
+        "1 comp. de 2,5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 2,5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 2,5mg",
+        "1 comp. de 5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-04-22",
+          "value": 3.4
+        },
+        {
+          "date": "2026-04-08",
+          "value": 2.3
+        },
+        {
+          "date": "2026-02-24",
+          "value": 3.1
+        },
+        {
+          "date": "2026-01-13",
+          "value": 1.8
+        },
+        {
+          "date": "2025-12-02",
+          "value": 3.6
+        },
+        {
+          "date": "2025-10-14",
+          "value": 2.3
+        },
+        {
+          "date": "2025-09-02",
+          "value": 1.8
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_26wqj14yb",
+      "name": "Maria Aparecida Barbosa da Silva",
+      "contact": "",
+      "birthDate": "1964-06-17",
+      "age": 61,
+      "admission": "2026-04-15",
+      "level": "Médio",
+      "organizer": "Não",
+      "indication": "TVP/TEP",
+      "target": "2.0-3.0",
+      "pillPref": "ambos",
+      "dosePrev": 30,
+      "dosePrevDate": "2026-04-01",
+      "doseCurrent": 35,
+      "doseCurrentDate": "2026-04-15",
+      "weeklyDose": 35,
+      "meds": "",
+      "prevReloginho": [
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg"
+      ],
+      "currentReloginho": [
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 2,5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 2,5mg",
+        "1 comp. de 5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-05-06",
+          "value": 2.7
+        },
+        {
+          "date": "2026-04-15",
+          "value": 1.2
+        },
+        {
+          "date": "2026-04-01",
+          "value": 1
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
     }
-
-    /* Estilização de Titulo Principal com Gradiente */
-    .title-header {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #1E3A8A;
-        background: linear-gradient(90deg, #1E3A8A 0%, #3B82F6 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        margin-bottom: 0px;
-    }
-
-    .sub-header {
-        color: #64748B;
-        font-size: 1.0rem;
-        margin-bottom: 25px;
-    }
-
-    /* Cards Informativos Personalizados */
-    .custom-card {
-        background-color: #F8FAFC;
-        border-radius: 12px;
-        padding: 20px;
-        border-left: 6px solid #3B82F6;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-        margin-bottom: 20px;
-    }
-
-    /* Emblemas de Status (Badges Coloridas) */
-    .badge-verde {
-        background-color: #DEF7EC;
-        color: #03543F;
-        padding: 6px 14px;
-        border-radius: 20px;
-        font-weight: 600;
-        display: inline-block;
-    }
-
-    .badge-amarela {
-        background-color: #FEF08A;
-        color: #713F12;
-        padding: 6px 14px;
-        border-radius: 20px;
-        font-weight: 600;
-        display: inline-block;
-    }
-
-    .badge-vermelha {
-        background-color: #FDE8E8;
-        color: #9B1C1C;
-        padding: 6px 14px;
-        border-radius: 20px;
-        font-weight: 600;
-        display: inline-block;
-    }
-
-    /* Estilização dos Botões */
-    .stButton>button {
-        background-color: #1E3A8A;
-        color: white;
-        border-radius: 8px;
-        font-weight: 600;
-        border: none;
-        padding: 10px 24px;
-        transition: all 0.3s ease;
-    }
-
-    .stButton>button:hover {
-        background-color: #2563EB;
-        color: white;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-# ==============================================================================
-# 2. BANCO DE DADOS EM MEMÓRIA (SESSÃO)
-# ==============================================================================
-if "pacientes" not in st.session_state:
-    st.session_state.pacientes = pd.DataFrame(columns=["Prontuário", "Nome", "Indicação", "RNI_Alvo_Min", "RNI_Alvo_Max"])
-
-if "registros_rni" not in st.session_state:
-    st.session_state.registros_rni = pd.DataFrame(columns=[
-        "Data", "Prontuário", "RNI", "Dose_Semanal_mg", "Status", "Conduta", "Eventos_Adversos"
-    ])
-
-# ==============================================================================
-# 3. LÓGICA DE AVALIAÇÃO COM CORES E BADGES CUSTOMIZADAS
-# ==============================================================================
-def avaliar_rni(rni, min_alvo, max_alvo):
-    if rni < min_alvo:
-        return "INFRATERAPÊUTICO", "badge-amarela", "⚠️ **RNI Abaixo do Alvo:** Avaliar adesão, interações medicamentosas ou ajuste de dose semanal."
-    elif rni > max_alvo:
-        if rni >= 4.5:
-            return "CRÍTICO (RNI ≥ 4.5)", "badge-vermelha", "🚨 **RNI Criticamente Elevado:** Alto risco hemorrágico! Considerar pausa de dose e/ou Vitamina K conforme protocolo."
-        return "SUPRATERAPÊUTICO", "badge-vermelha", "🛑 **RNI Acima do Alvo:** Avaliar redução da dose semanal e retorno precoce."
-    else:
-        return "DENTRO DO ALVO", "badge-verde", "✅ **RNI na Faixa Terapêutica:** Manter posologia atual e agendar retorno de rotina."
-
-# ==============================================================================
-# 4. INTERFACE E CABEÇALHO
-# ==============================================================================
-st.markdown('<h1 class="title-header">🩺 Ambulatório de Anticoagulação - Manejo de Varfarina</h1>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Sistema de Suporte à Decisão Clínica e Registro de RNI para Farmácia Clínica</p>', unsafe_allow_html=True)
-
-# Menu de Navegação na Barra Lateral
-st.sidebar.image("https://img.icons8.com/color/96/medical-heart.png", width=70)
-st.sidebar.title("Menu do Sistema")
-aba = st.sidebar.radio("Selecione o Módulo:", ["1. Cadastrar Paciente", "2. Registrar Consulta / RNI", "3. Painel do Paciente & TTR"])
-
-# ==============================================================================
-# ABA 1: CADASTRO DE PACIENTE
-# ==============================================================================
-if aba == "1. Cadastrar Paciente":
-    st.subheader("👤 Cadastro de Paciente")
-    
-    with st.container():
-        st.markdown("""
-        <div class="custom-card">
-            <b>Dica Clínica:</b> Utilize identificadores anônimos (ex: PAC-001) para garantir a privacidade e conformidade com a LGPD.
-        </div>
-        """, unsafe_allow_html=True)
-        
-        with st.form("form_cadastro"):
-            col1, col2 = st.columns(2)
-            with col1:
-                prontuario = st.text_input("Prontuário / ID Anônimo*", placeholder="Ex: PAC-001")
-                nome = st.text_input("Iniciais ou Nome do Paciente*", placeholder="Ex: A.B.C.")
-            with col2:
-                indicacao = st.selectbox("Indicação da Anticoagulação", [
-                    "Fibrilação Atrial (FA)", "Prótese Valvar Mecânica", "Trombose Venosa Profunda (TVP)",
-                    "Embolia Pulmonar (EP)", "Outra Indicação"
-                ])
-                faixa_alvo = st.selectbox("Faixa Alvo de RNI", ["2.0 - 3.0", "2.5 - 3.5"])
-            
-            btn_salvar = st.form_submit_button("💾 Salvar Paciente")
-            
-            if btn_salvar:
-                if not prontuario or not nome:
-                    st.error("Preencha todos os campos obrigatórios (*).")
-                elif prontuario in st.session_state.pacientes["Prontuário"].values:
-                    st.warning("Já existe um paciente cadastrado com este ID.")
-                else:
-                    rni_min, rni_max = map(float, faixa_alvo.split(" - "))
-                    novo_p = pd.DataFrame([{
-                        "Prontuário": prontuario,
-                        "Nome": nome,
-                        "Indicação": indicacao,
-                        "RNI_Alvo_Min": rni_min,
-                        "RNI_Alvo_Max": rni_max
-                    }])
-                    st.session_state.pacientes = pd.concat([st.session_state.pacientes, novo_p], ignore_index=True)
-                    st.success(f"Paciente **{nome}** cadastrado com sucesso!")
-
-    st.markdown("### Lista de Pacientes no Ambulatório")
-    st.dataframe(st.session_state.pacientes, use_container_width=True)
-
-# ==============================================================================
-# ABA 2: REGISTRO DE CONSULTA / RNI
-# ==============================================================================
-elif aba == "2. Registrar Consulta / RNI":
-    st.subheader("📋 Registro de Exame e Conduta")
-    
-    if st.session_state.pacientes.empty:
-        st.info("Nenhum paciente cadastrado. Cadastre um paciente na aba '1. Cadastrar Paciente'.")
-    else:
-        lista_pacientes = st.session_state.pacientes["Prontuário"] + " - " + st.session_state.pacientes["Nome"]
-        paciente_sel = st.selectbox("Selecione o Paciente:", lista_pacientes)
-        id_prontuario = paciente_sel.split(" - ")[0]
-        
-        dados_p = st.session_state.pacientes[st.session_state.pacientes["Prontuário"] == id_prontuario].iloc[0]
-        
-        # Caixas de Resumo do Paciente Selecionado
-        st.markdown(f"""
-        <div class="custom-card">
-            <b>Paciente:</b> {dados_p['Nome']} | <b>Indicação:</b> {dados_p['Indicação']} | <b>Faixa Alvo de RNI:</b> {dados_p['RNI_Alvo_Min']} a {dados_p['RNI_Alvo_Max']}
-        </div>
-        """, unsafe_allow_html=True)
-        
-        with st.form("form_rni"):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                data_exame = st.date_input("Data da Consulta", value=date.today())
-                rni_valor = st.number_input("RNI Atual*", min_value=0.5, max_value=10.0, step=0.1, value=2.5)
-            with col2:
-                dose_semanal = st.number_input("Dose Semanal Total (mg)", min_value=0.0, step=2.5, value=35.0)
-                eventos = st.multiselect("Eventos / Queixas", [
-                    "Sem queixas", "Gengivorragia / Equimoses", "Epistaxe",
-                    "Sangramento Maior", "Esquecimento de Dose"
-                ])
-            with col3:
-                conduta = st.text_area("Conduta Farmacoterapêutica", placeholder="Ajuste de dosagem, orientação sobre alimentos ricos em Vitamina K, retorno em X dias...")
-            
-            btn_avaliar = st.form_submit_button("🔬 Avaliar RNI e Registrar")
-            
-        if btn_avaliar:
-            status, classe_badge, orientacao = avaliar_rni(rni_valor, dados_p["RNI_Alvo_Min"], dados_p["RNI_Alvo_Max"])
-            
-            # Exibe Resultado Visual com a Badge Personalizada
-            st.markdown(f"""
-            <div style="margin-top: 15px; margin-bottom: 15px;">
-                <b>Status Clinico:</b> <span class="{classe_badge}">{status}</span>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.info(orientacao)
-            
-            # Grava no histórico
-            novo_r = pd.DataFrame([{
-                "Data": data_exame.strftime("%d/%m/%Y"),
-                "Prontuário": id_prontuario,
-                "RNI": rni_valor,
-                "Dose_Semanal_mg": dose_semanal,
-                "Status": status,
-                "Conduta": conduta,
-                "Eventos_Adversos": ", ".join(eventos) if eventos else "Nenhum"
-            }])
-            st.session_state.registros_rni = pd.concat([st.session_state.registros_rni, novo_r], ignore_index=True)
-
-# ==============================================================================
-# ABA 3: PAINEL DO PACIENTE & TTR
-# ==============================================================================
-elif aba == "3. Painel do Paciente & TTR":
-    st.subheader("📊 Indicadores Clínicos e Evolução")
-    
-    if st.session_state.registros_rni.empty:
-        st.info("Nenhum exame cadastrado no sistema.")
-    else:
-        lista_pacientes = st.session_state.pacientes["Prontuário"] + " - " + st.session_state.pacientes["Nome"]
-        paciente_sel = st.selectbox("Escolha o Paciente para Analisar:", lista_pacientes)
-        id_prontuario = paciente_sel.split(" - ")[0]
-        
-        dados_p = st.session_state.pacientes[st.session_state.pacientes["Prontuário"] == id_prontuario].iloc[0]
-        hist = st.session_state.registros_rni[st.session_state.registros_rni["Prontuário"] == id_prontuario]
-        
-        if hist.empty:
-            st.warning("Este paciente ainda não possui histórico registrado.")
-        else:
-            # Métricas em Cards Visuais
-            total = len(hist)
-            no_alvo = len(hist[hist["Status"] == "DENTRO DO ALVO"])
-            ttr = (no_alvo / total) * 100
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Consultas/Exames", total)
-            c2.metric("Exames na Faixa Alvo", no_alvo)
-            c3.metric("% no Alvo (TTR Direto)", f"{ttr:.1f}%")
-            
-            st.markdown("---")
-            st.markdown("### Evolução do RNI no Tempo")
-            
-            df_g = hist.copy()
-            df_g["Alvo Mínimo"] = dados_p["RNI_Alvo_Min"]
-            df_g["Alvo Máximo"] = dados_p["RNI_Alvo_Max"]
-            
-            st.line_chart(
-                df_g.set_index("Data")[["RNI", "Alvo Mínimo", "Alvo Máximo"]],
-                color=["#2563EB", "#059669", "#059669"]
-            )
-            
-            st.markdown("### Histórico Completo de Atendimentos")
-            st.dataframe(hist.drop(columns=["Prontuário"]), use_container_width=True)
+  ],
+  "agenda": {
+    "2026-04-08": [
+      {
+        "id": "_wg71rwgor",
+        "status": "attended"
+      },
+      {
+        "id": "_1vyg8tzjo",
+        "status": "attended"
+      },
+      {
+        "id": "_s2iihjuze",
+        "status": "attended"
+      },
+      {
+        "id": "_phxei56sl",
+        "status": "attended"
+      }
+    ],
+    "2026-04-15": [
+      {
+        "id": "_52z4wb21g",
+        "status": "attended"
+      },
+      {
+        "id": "_l0ntc2776",
+        "status": "attended"
+      }
+    ],
+    "2026-05-06": [
+      {
+        "id": "_cyz9pscrh",
+        "status": "missed"
+      },
+      {
+        "id": "_l0ntc2776",
+        "status": "scheduled"
+      },
+      {
+        "id": "_7zitf8na7",
+        "status": "attended"
+      },
+      {
+        "id": "_26wqj14yb",
+        "status": "scheduled"
+      }
+    ],
+    "2026-05-13": [
+      {
+        "id": "_g8ndq26o6",
+        "status": "scheduled"
+      },
+      {
+        "id": "_phxei56sl",
+        "status": "scheduled"
+      },
+      {
+        "id": "_1vyg8tzjo",
+        "status": "scheduled"
+      },
+      {
+        "id": "_wg71rwgor",
+        "status": "scheduled"
+      }
+    ],
+    "2026-04-22": [
+      {
+        "id": "_3fvv6if8j",
+        "status": "attended"
+      },
+      {
+        "id": "_r13z1wtz9",
+        "status": "attended"
+      },
+      {
+        "id": "_s2iihjuze",
+        "status": "attended"
+      },
+      {
+        "id": "_phxei56sl",
+        "status": "attended"
+      }
+    ],
+    "2026-04-29": [
+      {
+        "id": "_um2o7gvyr",
+        "status": "attended"
+      },
+      {
+        "id": "_wg71rwgor",
+        "status": "attended"
+      },
+      {
+        "id": "_1vyg8tzjo",
+        "status": "attended"
+      },
+      {
+        "id": "_52z4wb21g",
+        "status": "missed"
+      }
+    ],
+    "2026-05-20": [
+      {
+        "id": "_um2o7gvyr",
+        "status": "scheduled"
+      },
+      {
+        "id": "_7zitf8na7",
+        "status": "scheduled"
+      }
+    ],
+    "2026-05-27": [
+      {
+        "id": "_cyz9pscrh",
+        "status": "scheduled"
+      }
+    ]
+  }
+}
