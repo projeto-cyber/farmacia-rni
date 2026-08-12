@@ -1,4 +1,94 @@
-
+{
+  "patients": [
+    {
+      "id": "_wg71rwgor",
+      "name": "Ailton Dias de Sousa",
+      "contact": "(31) 9733-4225",
+      "birthDate": "1977-05-03",
+      "age": 48,
+      "admission": "2025-08-05",
+      "level": "Médio",
+      "organizer": "Não",
+      "indication": "Fibrilação Atrial",
+      "target": "2.0-3.0",
+      "pillPref": "5mg",
+      "dosePrev": 45,
+      "dosePrevDate": "2026-02-24",
+      "doseCurrent": 35,
+      "doseCurrentDate": "2026-04-08",
+      "weeklyDose": 35,
+      "meds": "carvedilol 3,125mg 1-0-0; Espironolactona 25mg 1-0-0, Varfarina 5mg 1-0-0, Sinvastatina 10mg 0-0-1, enalapril 10mg",
+      "prevReloginho": [
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg",
+        "5mg"
+      ],
+      "currentReloginho": [
+        "1 comp. de 5mg + Metade do comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg + Metade do comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg + Metade do comp. de 5mg",
+        "1 comp. de 5mg",
+        "1 comp. de 5mg + Metade do comp. de 5mg"
+      ],
+      "rniHistory": [
+        {
+          "date": "2026-04-29",
+          "value": 2.2
+        },
+        {
+          "date": "2026-04-08",
+          "value": 4.6
+        },
+        {
+          "date": "2026-02-24",
+          "value": 1.2
+        },
+        {
+          "date": "2026-01-13",
+          "value": 1.7
+        },
+        {
+          "date": "2025-12-02",
+          "value": 2.3
+        },
+        {
+          "date": "2025-10-21",
+          "value": 3.7
+        },
+        {
+          "date": "2025-09-23",
+          "value": 1.9
+        }
+      ],
+      "ivcfHistory": [],
+      "evolution": "Evolução Farmacêutica - 13/04/2026\n\nPaciente em acompanhamento pela farmácia clínica há 8 mês(es). Comparece hoje para acompanhamento da anticoagulação oral. \n- RNI Atual: 4.60 (Coletado em 08/04/2026)\n- RNI Anterior: 1.20 (Coletado em 24/02/2026)\n- Intervalo entre os exames: 43 dias.\n\nAnamnese e Adesão:\n- Sangramentos: Nega ocorrência.\n- Sinais de Trombose: Nega ocorrência.\n- Internações/Procedimentos: Não houve necessidade de busca à urgência.\n- Hábito Alimentar (Vit. K): Sem alterações significativas relatadas.\n- Uso de Fármacos/Produtos Naturais: Atenção para possível interação com: sinvastatina (Possível justificativa para alteração de RNI).\n- Esquecimento de Doses: Nega esquecimento de doses (boa adesão referida).\n- Presença e Faltas: Boa adesão ao cronograma do ambulatório (sem faltas).\n- Nível de compreensão do tratamento: Moderado. Não utiliza organizador de comprimidos.\n\nConduta Farmacêutica:\n- Dose Semanal Anterior: 0 mg.\n- Ajuste: Manutenção da dose atual (conforme Quadro 3 do Protocolo PBH).\n- Nova Dose Semanal (Atual): 0 mg.\n- Como tomar: Medicação suspensa (Pausa)..\n- Dispensação: Não dispensado (Pausa)..\n- Próxima Consulta (Retorno): Não definida (Intervalo estipulado conforme critérios de estabilidade do Protocolo PBH).\n- Orientações repassadas quanto a horários da medicação, constância na alimentação e sinais de alerta.\n- Relógio de prescrição visual impresso, ajustado e entregue ao paciente.",
+      "checklist": {
+        "bleeding": "Não",
+        "bleedingDetails": "",
+        "thrombosis": "Não",
+        "thrombosisDetails": "",
+        "diet": "Não",
+        "dietDetails": "",
+        "missedDose": "Não",
+        "missedDoseDetails": "",
+        "hospital": "Não",
+        "hospitalDetails": "",
+        "newMeds": "Não",
+        "newMedsDetails": ""
+      }
+    },
+    {
+      "id": "_1vyg8tzjo",
+      "name": "Ana Dias Loiola",
+      "contact": "3450-6186",
+      "birthDate": "1936-10-15",
+      "age": 89,
       "admission": "2024-09-27",
       "level": "Alto",
       "organizer": "Sim",
