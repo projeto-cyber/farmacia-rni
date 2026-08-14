@@ -1,317 +1,167 @@
 import streamlit as st
 import pandas as pd
-import json
-import os
-from datetime import datetime
+import sqlite3
+import datetime
 
-# ==============================================================================
-# 1. CONFIGURAÇÃO DA PÁGINA E ESTILIZAÇÃO CSS
-# ==============================================================================
+# -----------------------------------------------------------------------------
+# 1. Configuração Inicial da Página
+# -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Ambulatório de Anticoagulação - RNI",
+    page_title="Controle de RNI - Anticoagulação",
     page_icon="🩸",
     layout="wide"
 )
 
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    
-    html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    
-    /* Estilização da Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #F8FAFC;
-        border-right: 1px solid #E2E8F0;
-    }
-    
-    /* Cards Clínicos de Informações */
-    .patient-card {
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
-        margin-bottom: 20px;
-    }
-    
-    .info-label {
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: #64748B;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-    
-    .info-value {
-        font-size: 1.05rem;
-        font-weight: 600;
-        color: #0F172A;
-        margin-bottom: 8px;
-    }
-    
-    /* Badge do Status de Risco */
-    .badge-level {
-        display: inline-block;
-        padding: 2px 10px;
-        border-radius: 9999px;
-        font-size: 0.8rem;
-        font-weight: 600;
-    }
-    .level-baixo { background-color: #DCFCE7; color: #166534; }
-    .level-medio { background-color: #FEF3C7; color: #92400E; }
-    .level-alto { background-color: #FEE2E2; color: #991B1B; }
-    </style>
-""", unsafe_allow_html=True)
-
-# ==============================================================================
-# 2. FUNÇÕES DE CÁLCULO DE TTR
-# ==============================================================================
-def calcular_ttr_rosendaal(historico, min_alvo, max_alvo):
-    """Calcula o Time in Therapeutic Range (TTR) pelo Método de Rosendaal (Interpolação Linear)."""
-    if not historico or len(historico) < 2:
-        return 0.0
-    
-    try:
-        df = pd.DataFrame(historico)
-        df['date'] = pd.to_datetime(df['date'])
-        df['value'] = df['value'].astype(float)
-        df = df.sort_values('date').reset_index(drop=True)
-        
-        dias_no_alvo = 0.0
-        dias_totais = 0
-        
-        for i in range(len(df) - 1):
-            d1, v1 = df.loc[i, 'date'], df.loc[i, 'value']
-            d2, v2 = df.loc[i+1, 'date'], df.loc[i+1, 'value']
-            
-            dias_intervalo = (d2 - d1).days
-            if dias_intervalo <= 0:
-                continue
-                
-            passo_rni = (v2 - v1) / dias_intervalo
-            
-            for dia in range(dias_intervalo):
-                rni_estimado = v1 + (passo_rni * dia)
-                if min_alvo <= rni_estimado <= max_alvo:
-                    dias_no_alvo += 1.0
-                dias_totais += 1
-                
-        if dias_totais == 0:
-            return 0.0
-            
-        return (dias_no_alvo / dias_totais) * 100.0
-    except Exception:
-        return 0.0
-
-def calcular_ttr_direto(historico, min_alvo, max_alvo):
-    """Calcula a proporção direta de exames dentro do alvo."""
-    if not historico:
-        return 0.0, 0, 0
-    
-    try:
-        total_exames = len(historico)
-        exames_na_faixa = sum(1 for e in historico if min_alvo <= float(e['value']) <= max_alvo)
-        porcentagem = (exames_na_faixa / total_exames) * 100.0
-        return porcentagem, exames_na_faixa, total_exames
-    except Exception:
-        return 0.0, 0, 0
-
-# ==============================================================================
-# 3. CARREGAMENTO E MANIPULAÇÃO DE DADOS (JSON)
-# ==============================================================================
-if "dados" not in st.session_state:
-    if os.path.exists("dados.json"):
-        with open("dados.json", "r", encoding="utf-8") as f:
-            st.session_state.dados = json.load(f)
-    else:
-        st.session_state.dados = {"patients": [], "agenda": {}}
-
-pacientes = st.session_state.dados.get("patients", [])
-pacientes = sorted(pacientes, key=lambda x: x['name'])
-
-# ==============================================================================
-# 4. PAINEL ESQUERDO (SIDEBAR - SELEÇÃO DE PACIENTES)
-# ==============================================================================
-st.sidebar.markdown("### 🩺 Ambulatório RNI")
-st.sidebar.caption(f"Total de {len(pacientes)} pacientes cadastrados")
-
-nombres_pacientes = [p['name'] for p in pacientes]
-
-if not nombres_pacientes:
-    st.warning("Nenhum paciente cadastrado no arquivo dados.json.")
-    st.stop()
-
-paciente_nome_sel = st.sidebar.radio(
-    "Selecione o paciente:",
-    nombres_pacientes,
-    index=0
-)
-
-# Recupera o objeto do paciente selecionado
-p = next(item for item in pacientes if item["name"] == paciente_nome_sel)
-
-# ==============================================================================
-# 5. PAINEL PRINCIPAL (FICHA CLÍNICA DO PACIENTE)
-# ==============================================================================
-st.markdown(f"# 👤 {p['name']}")
-
-col_info1, col_info2, col_info3 = st.columns([2, 2, 2])
-
-# Faixa Alvo do Paciente
-try:
-    target_str = p.get('target', '2.0-3.0')
-    min_alvo, max_alvo = map(float, target_str.split('-'))
-except Exception:
-    min_alvo, max_alvo = 2.0, 3.0
-
-# Cálculos de TTR
-ttr_valor = calcular_ttr_rosendaal(p.get('rniHistory', []), min_alvo, max_alvo)
-ttr_direto, exames_na_faixa, total_exames = calcular_ttr_direto(p.get('rniHistory', []), min_alvo, max_alvo)
-
-# Lógica Dinâmica de Cores baseada no TTR de Rosendaal
-if ttr_valor >= 70.0:
-    cor_ttr = "#10B981"      # Verde (Bom controle)
-    bg_badge = "#ECFDF5"     # Fundo verde claro
-    status_ttr = "Estável"
-elif ttr_valor >= 60.0:
-    cor_ttr = "#F59E0B"      # Amarelo/Laranja (Alerta)
-    bg_badge = "#FFFBEB"     # Fundo amarelo claro
-    status_ttr = "Alerta"
-else:
-    cor_ttr = "#EF4444"      # Vermelho (Crítico)
-    bg_badge = "#FEF2F2"     # Fundo vermelho claro
-    status_ttr = "Crítico"
-
-# Classe do nível de complexidade
-level_class = "level-baixo" if p.get('level') == "Baixo" else "level-alto" if p.get('level') == "Alto" else "level-medio"
-
-with col_info1:
-    st.markdown(f"""
-    <div class="patient-card">
-        <div class="info-label">Dados Demográficos</div>
-        <div class="info-value">Idade: {p.get('age', 'N/A')} anos</div>
-        <div class="info-value">Contato: {p.get('contact', 'Não informado')}</div>
-        <div class="info-label" style="margin-top: 10px;">Complexidade</div>
-        <div><span class="badge-level {level_class}">{p.get('level', 'Médio')}</span></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col_info2:
-    st.markdown(f"""
-    <div class="patient-card">
-        <div class="info-label">Manejo Terapêutico</div>
-        <div class="info-value">Indicação: {p.get('indication', 'N/A')}</div>
-        <div class="info-value">Dose Semanal: {p.get('weeklyDose', p.get('doseCurrent', 0))} mg</div>
-        <div class="info-value">Organizador de Cp.: {p.get('organizer', 'Não')}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# Renderização sem quebras do Card HTML de TTR
-with col_info3:
-    card_html = f"""
-    <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
-            <span style="font-size: 0.85rem; font-weight: 600; color: #64748B; text-transform: uppercase;">
-                TTR (Rosendaal)
-            </span>
-            <span style="font-size: 0.75rem; font-weight: 600; color: {cor_ttr}; background: {bg_badge}; padding: 2px 8px; border-radius: 9999px;">
-                {status_ttr}
-            </span>
-        </div>
-        <div style="font-size: 2.5rem; font-weight: 700; color: {cor_ttr}; line-height: 1; margin-bottom: 16px;">
-            {ttr_valor:.1f}%
-        </div>
-        <div style="border-top: 1px solid #F1F5F9; margin-bottom: 12px;"></div>
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-            <div style="font-size: 0.8rem; color: #94A3B8; text-transform: uppercase; font-weight: 500;">
-                Método Comparativo
-            </div>
-            <div style="font-size: 0.87rem; color: #334155;">
-                TTR Direto: <b style="color: #0F172A;">{ttr_direto:.1f}%</b> 
-                <span style="color: #64748B; font-size: 0.8rem; margin-left: 4px;">
-                    ({exames_na_faixa}/{total_exames} exames)
-                </span>
-            </div>
-        </div>
-    </div>
-    """
-    st.markdown(card_html, unsafe_allow_html=True)
-
-st.markdown("---")
-
-# ==============================================================================
-# 6. GRÁFICO DE ACOMPANHAMENTO E LANÇAMENTO DE EXAMES
-# ==============================================================================
-col_grafico, col_novo_rni = st.columns([2, 1])
-
-with col_grafico:
-    st.subheader("📈 Tendência do RNI")
-    
-    if p.get('rniHistory'):
-        df_rni = pd.DataFrame(p['rniHistory'])
-        df_rni['date'] = pd.to_datetime(df_rni['date'])
-        df_rni['value'] = df_rni['value'].astype(float)
-        df_rni = df_rni.sort_values('date')
-        
-        df_rni['Alvo Mínimo'] = min_alvo
-        df_rni['Alvo Máximo'] = max_alvo
-        
-        st.line_chart(
-            df_rni.set_index('date')[['value', 'Alvo Mínimo', 'Alvo Máximo']],
-            color=["#2563EB", "#10B981", "#10B981"],
-            height=300
+# -----------------------------------------------------------------------------
+# 2. Funções de Banco de Dados (SQLite Local)
+# -----------------------------------------------------------------------------
+def init_db():
+    """Inicializa o banco de dados e cria a tabela se não existir."""
+    conn = sqlite3.connect("rni_pacientes.db")
+    c = conn.cursor()
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS exames (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            paciente TEXT NOT NULL,
+            indicacao TEXT NOT NULL,
+            data_coleta TEXT NOT NULL,
+            rni_atual REAL NOT NULL,
+            meta_min REAL NOT NULL,
+            meta_max REAL NOT NULL,
+            dose_semanal REAL NOT NULL,
+            status TEXT NOT NULL
         )
+    ''')
+    conn.commit()
+    conn.close()
+
+def salvar_exame(paciente, indicacao, data_coleta, rni_atual, meta_min, meta_max, dose_semanal, status):
+    """Salva um novo registro no banco de dados local."""
+    conn = sqlite3.connect("rni_pacientes.db")
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO exames (paciente, indicacao, data_coleta, rni_atual, meta_min, meta_max, dose_semanal, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (paciente, indicacao, str(data_coleta), rni_atual, meta_min, meta_max, dose_semanal, status))
+    conn.commit()
+    conn.close()
+
+def carregar_dados():
+    """Lê todos os dados salvos do SQLite e retorna como DataFrame do Pandas."""
+    conn = sqlite3.connect("rni_pacientes.db")
+    df = pd.read_sql_query("SELECT * FROM exames ORDER BY data_coleta DESC", conn)
+    conn.close()
+    return df
+
+# Garante que a estrutura do banco de dados exista ao iniciar o app
+init_db()
+
+# -----------------------------------------------------------------------------
+# 3. Interface Principal e Barra Lateral
+# -----------------------------------------------------------------------------
+st.title("🩸 Sistema de Acompanhamento e Manejo de RNI")
+st.caption("Ferramenta de Acompanhamento Clínico de Anticoagulação Oral | TCR Farmácia Hospitalar")
+
+st.sidebar.header("📝 Novo Registro de Exame")
+
+# Formulário de Entrada
+nome_paciente = st.sidebar.text_input("Nome / Prontuário do Paciente", placeholder="Ex: Paciente 01")
+indicacao = st.sidebar.selectbox("Indicação Primária", ["Fibrilação Atrial", "Prótese Valvular Mecânica", "TEV / TVP", "Outra"])
+
+st.sidebar.subheader("🎯 Meta Terapêutica")
+col_m1, col_m2 = st.sidebar.columns(2)
+meta_min = col_m1.number_input("RNI Mín", value=2.0, step=0.1)
+meta_max = col_m2.number_input("RNI Máx", value=3.0, step=0.1)
+
+st.sidebar.subheader("📊 Exame Atual")
+data_exame = st.sidebar.date_input("Data da Coleta", datetime.date.today())
+rni_atual = st.sidebar.number_input("Valor do RNI", min_value=0.5, max_value=15.0, value=2.5, step=0.1)
+dose_semanal = st.sidebar.number_input("Dose Semanal Atual (mg)", value=35.0, step=2.5)
+
+# Lógica de Avaliação Clínica
+if rni_atual < meta_min:
+    status_clinico = "Subterapêutico (Risco Trombótico)"
+    delta_msg = f"Abaixo do alvo ({meta_min})"
+elif rni_atual > meta_max:
+    status_clinico = "Supraterapêutico (Risco Hemorrágico)"
+    delta_msg = f"Acima do alvo ({meta_max})"
+else:
+    status_clinico = "Na Faixa Terapêutica"
+    delta_msg = "Dentro da meta"
+
+# Botão para salvar no banco
+if st.sidebar.button("💾 Salvar Exame no Banco de Dados", type="primary"):
+    if nome_paciente.strip() == "":
+        st.sidebar.error("Por favor, preencha o identificador do paciente.")
     else:
-        st.info("Nenhum histórico de RNI para gerar o gráfico.")
+        salvar_exame(
+            nome_paciente, indicacao, data_exame, rni_atual,
+            meta_min, meta_max, dose_semanal, status_clinico
+        )
+        st.sidebar.success(f"Exame registrado com sucesso para {nome_paciente}!")
+        st.rerun()
 
-with col_novo_rni:
-    st.subheader("➕ Registrar Exame")
-    
-    with st.form("form_novo_rni", clear_on_submit=True):
-        nova_data = st.date_input("Data da Coleta", value=datetime.today())
-        novo_rni = st.number_input("Valor do RNI", min_value=0.5, max_value=10.0, step=0.1, value=2.5)
-        
-        btn_adicionar = st.form_submit_button("Salvar Exame")
-        
-        if btn_adicionar:
-            novo_registro = {
-                "date": nova_data.strftime("%Y-%m-%d"),
-                "value": float(novo_rni)
-            }
-            
-            p['rniHistory'].insert(0, novo_registro)
-            
-            with open("dados.json", "w", encoding="utf-8") as f:
-                json.dump(st.session_state.dados, f, ensure_ascii=False, indent=2)
-                
-            st.success("RNI adicionado com sucesso!")
-            st.rerun()
+# -----------------------------------------------------------------------------
+# 4. Painel de Exibição dos Dados Atual
+# -----------------------------------------------------------------------------
+c1, c2, c3 = st.columns(3)
+c1.metric("RNI Informado", f"{rni_atual:.1f}", delta=delta_msg)
+c2.metric("Faixa Alvo", f"{meta_min:.1f} - {meta_max:.1f}")
+c3.metric("Dose Semanal", f"{dose_semanal} mg")
 
-st.markdown("---")
+if rni_atual < meta_min:
+    st.warning(f"⚠️ **Atenção:** Paciente em nível **{status_clinico}**. Avaliar adesão posológica ou interações medicamentosas.")
+elif rni_atual > meta_max:
+    st.error(f"🚨 **Alerta de Risco:** Paciente em nível **{status_clinico}**. Avaliar suspensão temporária, Vitamina K ou conduta de urgência.")
+else:
+    st.success(f"✅ **Faixa Adequada:** Paciente mantido dentro do alvo terapêutico.")
 
-# ==============================================================================
-# 7. REGISTROS DETALHADOS E EVOLUÇÃO FARMACÊUTICA
-# ==============================================================================
-tab_tabela, tab_evolucao, tab_meds = st.tabs(["📋 Histórico de Coletas", "📝 Evolução Farmacêutica", "💊 Medicamentos em Uso"])
+st.divider()
 
-with tab_tabela:
-    if p.get('rniHistory'):
-        df_hist = pd.DataFrame(p['rniHistory'])
-        df_hist['date'] = pd.to_datetime(df_hist['date']).dt.strftime('%d/%m/%Y')
-        df_hist.columns = ['Data da Coleta', 'Valor do RNI']
-        st.dataframe(df_hist, use_container_width=True)
+# -----------------------------------------------------------------------------
+# 5. Consulta e Histórico Salvo (Pandas + SQLite)
+# -----------------------------------------------------------------------------
+st.subheader("📚 Banco de Exames Registrados")
+
+df_banco = carregar_dados()
+
+if df_banco.empty:
+    st.info("Nenhum exame cadastrado até o momento. Utilise o menu lateral para realizar o primeiro registro.")
+else:
+    # Filtro por Paciente
+    lista_pacientes = ["Todos os Pacientes"] + sorted(list(df_banco["paciente"].unique()))
+    paciente_selecionado = st.selectbox("🔍 Selecionar Paciente para Visualização de Histórico", lista_pacientes)
+
+    if paciente_selecionado != "Todos os Pacientes":
+        df_filtrado = df_banco[df_banco["paciente"] == paciente_selecionado].copy()
     else:
-        st.info("Sem registros no histórico.")
+        df_filtrado = df_banco.copy()
 
-with tab_evolucao:
-    if p.get('evolution'):
-        st.text_area("Registro da Última Evolução:", p['evolution'], height=250)
-    else:
-        st.info("Nenhuma evolução registrada para este paciente.")
+    aba_tabela, aba_grafico = st.tabs(["📑 Histórico Geral / Registros", "📈 Evolução Temporal de RNI"])
 
-with tab_meds:
-    st.write("**Farmacoterapia Habitual:**")
-    st.info(p.get('meds') if p.get('meds') else "Nenhum medicamento adicional registrado.")
+    with aba_tabela:
+        st.dataframe(
+            df_filtrado,
+            column_config={
+                "id": "ID",
+                "paciente": "Paciente / Prontuário",
+                "indicacao": "Indicação",
+                "data_coleta": "Data da Coleta",
+                "rni_atual": "RNI",
+                "meta_min": "Meta Mín.",
+                "meta_max": "Meta Máx.",
+                "dose_semanal": "Dose Semanal (mg)",
+                "status": "Status Clínico"
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+
+    with aba_grafico:
+        if paciente_selecionado == "Todos os Pacientes":
+            st.warning("Selecione um paciente específico no campo acima para gerar o gráfico temporal individual.")
+        else:
+            # Ordena por data para exibição correta no gráfico
+            df_grafico = df_filtrado.sort_values(by="data_coleta")
+            st.line_chart(df_grafico, x="data_coleta", y="rni_atual")
+            st.caption(f"Evolução temporal do RNI do paciente: **{paciente_selecionado}**")
