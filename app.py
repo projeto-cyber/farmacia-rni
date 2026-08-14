@@ -213,6 +213,44 @@ def tendencia_paciente(paciente):
     return "estavel"
 
 
+def conduta_protocolo(rni, lo, hi):
+    """
+    Sugestão de conduta e percentual de ajuste de dose com base na posição
+    do RNI em relação à faixa terapêutica do paciente.
+
+    ATENÇÃO: isto é um protocolo padrão de referência (ajustável). A decisão
+    final de conduta é sempre do prescritor/farmacêutico responsável, conforme
+    o protocolo institucional vigente.
+
+    Retorna: (mensagem, percentual, cor, cor_fundo, rótulo_severidade)
+    """
+    if rni < lo:
+        diferenca = lo - rni
+        if diferenca <= 0.3:
+            return ("Aumentar a dose semanal em 5–10%. Reavaliar RNI em 1–2 semanas.",
+                    "+5% a +10%", "#F59E0B", "#FFFBEB", "Atenção")
+        elif diferenca <= 0.7:
+            return ("Aumentar a dose semanal em 10–15%. Reavaliar RNI em 1 semana.",
+                    "+10% a +15%", "#F97316", "#FFF7ED", "Alerta")
+        else:
+            return ("Aumentar a dose semanal em 15–20%. Considerar dose adicional pontual. Reavaliar em 3–5 dias.",
+                    "+15% a +20%", "#EF4444", "#FEF2F2", "Crítico — subterapêutico")
+    elif rni > hi:
+        diferenca = rni - hi
+        if diferenca <= 0.5:
+            return ("Reduzir a dose semanal em 5–10%. Reavaliar RNI em 1–2 semanas.",
+                    "-5% a -10%", "#F59E0B", "#FFFBEB", "Atenção")
+        elif diferenca <= 1.5:
+            return ("Omitir 1 dose e reduzir a dose semanal em 10–20%. Reavaliar em 3–5 dias.",
+                    "-10% a -20%", "#F97316", "#FFF7ED", "Alerta")
+        else:
+            return ("Suspender o anticoagulante, avaliar risco de sangramento e necessidade de vitamina K. Contatar o prescritor com urgência.",
+                    "Suspender", "#EF4444", "#FEF2F2", "Crítico — supraterapêutico")
+    else:
+        return ("Manter a dose semanal atual. Reavaliar RNI em 4 semanas.",
+                "Manter (0%)", "#10B981", "#ECFDF5", "Dentro da meta")
+
+
 # ==============================================================================
 # 4. GRÁFICOS (Plotly — visual em português, sem zoom, hover facilitado)
 # ==============================================================================
@@ -562,13 +600,36 @@ with aba_ficha:
                             "value": float(novo_rni),
                         })
                         salvar_dados()
-                        st.success("RNI adicionado com sucesso!")
+                        st.toast(f"Novo RNI ({novo_rni:.1f}) registrado e salvo automaticamente!", icon="🩸")
                         st.rerun()
+
+            # --- Painel de conduta sugerida, atualizado sempre que o RNI muda ---
+            st.markdown("---")
+            st.subheader("🧭 Conduta Sugerida (Protocolo)")
+            if p.get("rniHistory"):
+                _, valor_atual_rni = status_ultimo_rni(p)
+                mensagem, percentual, cor_c, bg_c, rotulo_c = conduta_protocolo(valor_atual_rni, min_alvo, max_alvo)
+                st.markdown(f"""
+                <div style="border-left:6px solid {cor_c}; background:{bg_c}; padding:16px 20px; border-radius:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                        <span style="font-weight:700;color:{cor_c};font-size:1rem;">⚠️ {rotulo_c}</span>
+                        <span style="background:{cor_c};color:white;padding:3px 12px;border-radius:9999px;font-weight:700;font-size:0.85rem;">{percentual}</span>
+                    </div>
+                    <div style="margin-top:8px;color:#0F172A;font-size:0.95rem;">{mensagem}</div>
+                    <div style="margin-top:10px;font-size:0.75rem;color:#64748B;">
+                        Último RNI: <b>{valor_atual_rni:.2f}</b> · Faixa alvo: {min_alvo}-{max_alvo} ·
+                        Sugestão baseada em protocolo padrão — validar sempre com o prescritor responsável.
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.info("Registre um exame de RNI para visualizar a conduta sugerida pelo protocolo.")
 
             st.markdown("---")
 
-            tab_tabela, tab_evolucao, tab_meds, tab_editar = st.tabs(
-                ["📋 Histórico de Coletas", "📝 Evolução Farmacêutica", "💊 Medicamentos em Uso", "✏️ Editar Dados"]
+            tab_tabela, tab_dose, tab_evolucao, tab_meds, tab_editar = st.tabs(
+                ["📋 Histórico de Coletas", "💉 Dose & Esquema Semanal", "📝 Evolução Farmacêutica",
+                 "💊 Medicamentos em Uso", "✏️ Editar Dados"]
             )
 
             with tab_tabela:
@@ -579,6 +640,62 @@ with aba_ficha:
                     st.dataframe(df_hist, use_container_width=True, hide_index=True)
                 else:
                     st.info("Sem registros no histórico.")
+
+            with tab_dose:
+                st.markdown("##### 💉 Dose Semanal Atual")
+                st.markdown(f"<div class='info-value' style='font-size:1.3rem;'>{p.get('weeklyDose', 0)} mg / semana</div>", unsafe_allow_html=True)
+
+                with st.form(f"form_dose_{p['id']}", clear_on_submit=True):
+                    col_d1, col_d2 = st.columns(2)
+                    nova_dose_semanal = col_d1.number_input(
+                        "Nova dose semanal (mg)", min_value=0.0,
+                        value=float(p.get("weeklyDose") or 0), step=2.5
+                    )
+                    data_dose = col_d2.date_input("Data de início desta dose", value=datetime.today())
+                    btn_dose = st.form_submit_button("💾 Atualizar Dose Semanal")
+
+                    if btn_dose:
+                        p.setdefault("doseHistory", []).insert(0, {
+                            "date": data_dose.strftime("%Y-%m-%d"),
+                            "weeklyDose": float(nova_dose_semanal),
+                        })
+                        p["weeklyDose"] = float(nova_dose_semanal)
+                        salvar_dados()
+                        st.toast(f"Dose semanal atualizada para {nova_dose_semanal} mg", icon="💾")
+                        st.rerun()
+
+                st.markdown("##### 📜 Histórico de Doses")
+                if p.get("doseHistory"):
+                    df_dose = pd.DataFrame(p["doseHistory"])
+                    df_dose["date"] = pd.to_datetime(df_dose["date"]).dt.strftime("%d/%m/%Y")
+                    df_dose.columns = ["Data", "Dose Semanal (mg)"]
+                    st.dataframe(df_dose, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("Nenhuma alteração de dose registrada ainda. As próximas atualizações aparecerão aqui.")
+
+                st.markdown("---")
+                st.markdown("##### 🗓️ Esquema Semanal de Doses (Reloginho)")
+                st.caption("Informe a dose a ser tomada em cada dia da semana, conforme o esquema posológico do paciente.")
+
+                reloginho_atual = p.get("reloginho", {})
+                dias_semana = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+
+                with st.form(f"form_reloginho_{p['id']}"):
+                    cols_dias = st.columns(7)
+                    valores_dias = {}
+                    for i, dia in enumerate(dias_semana):
+                        with cols_dias[i]:
+                            valores_dias[dia] = st.text_input(
+                                dia, value=reloginho_atual.get(dia, ""),
+                                key=f"reloginho_{p['id']}_{dia}", placeholder="ex: 5mg"
+                            )
+                    btn_reloginho = st.form_submit_button("💾 Salvar Esquema Semanal")
+
+                    if btn_reloginho:
+                        p["reloginho"] = valores_dias
+                        salvar_dados()
+                        st.toast("Esquema semanal atualizado e salvo!", icon="🗓️")
+                        st.rerun()
 
             with tab_evolucao:
                 if p.get("evolution"):
@@ -618,9 +735,8 @@ with aba_ficha:
                         col_alvo1, col_alvo2 = st.columns(2)
                         edit_alvo_min = col_alvo1.number_input("RNI alvo mínimo", value=lo_atual, step=0.1)
                         edit_alvo_max = col_alvo2.number_input("RNI alvo máximo", value=hi_atual, step=0.1)
-                        edit_dose = st.number_input("Dose semanal (mg)", min_value=0.0,
-                                                     value=float(p.get("weeklyDose") or 0), step=2.5)
                         edit_meds = st.text_area("Medicamentos em uso", value=p.get("meds", ""))
+                        st.caption("💡 A dose semanal agora é ajustada na aba **💉 Dose & Esquema Semanal**, com histórico.")
 
                     salvar_edicao = st.form_submit_button("💾 Salvar Alterações", type="primary")
 
@@ -635,11 +751,38 @@ with aba_ficha:
                             p["organizer"] = edit_organizador
                             p["indication"] = edit_indicacao
                             p["target"] = f"{edit_alvo_min}-{edit_alvo_max}"
-                            p["weeklyDose"] = edit_dose
                             p["meds"] = edit_meds.strip()
                             salvar_dados()
                             st.success("Dados do paciente atualizados com sucesso!")
                             st.rerun()
+
+            # --- Backup de dados: salvar (exportar) e importar, no rodapé direito ---
+            st.markdown("---")
+            col_vazia, col_backup = st.columns([3, 1])
+            with col_backup:
+                st.markdown("###### ⚙️ Backup de Dados")
+                dados_json_str = json.dumps(st.session_state.dados, ensure_ascii=False, indent=2)
+                st.download_button(
+                    "💾 Salvar (baixar .json)",
+                    data=dados_json_str,
+                    file_name="dados.json",
+                    mime="application/json",
+                    use_container_width=True,
+                )
+                arquivo_importado = st.file_uploader(
+                    "📂 Importar dados (.json)", type=["json"], key="importar_dados"
+                )
+                if arquivo_importado is not None:
+                    if st.session_state.get("ultimo_arquivo_importado") != arquivo_importado.name:
+                        try:
+                            novos_dados = json.load(arquivo_importado)
+                            st.session_state.dados = novos_dados
+                            st.session_state["ultimo_arquivo_importado"] = arquivo_importado.name
+                            salvar_dados()
+                            st.success("Dados importados com sucesso!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao importar arquivo: {e}")
 
 # ------------------------------------------------------------------------------
 # 5.3 ADICIONAR PACIENTE
