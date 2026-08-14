@@ -463,16 +463,21 @@ with aba_ficha:
     else:
         col_main, col_lista = st.columns([4, 1])
 
-        nomes = sorted([p["name"] for p in pacientes])
+        # Usamos o "id" (estável) para controlar a seleção, e não o nome —
+        # assim, editar o nome de um paciente não quebra a seleção atual.
+        mapa_id_nome = {p.get("id", p["name"]): p["name"] for p in pacientes}
+        ids_ordenados = sorted(mapa_id_nome.keys(), key=lambda pid: mapa_id_nome[pid])
 
         with col_lista:
             st.markdown("##### 🗂️ Pacientes")
-            nome_sel = st.radio(
-                "Selecionar paciente", nomes, key="ficha_paciente_sel",
+            id_sel = st.radio(
+                "Selecionar paciente", ids_ordenados,
+                format_func=lambda pid: mapa_id_nome[pid],
+                key="ficha_paciente_sel_id",
                 label_visibility="collapsed"
             )
 
-        p = next(item for item in pacientes if item["name"] == nome_sel)
+        p = next(item for item in pacientes if item.get("id", item["name"]) == id_sel)
 
         with col_main:
             min_alvo, max_alvo = faixa_alvo(p)
@@ -614,7 +619,7 @@ with aba_ficha:
                         edit_alvo_min = col_alvo1.number_input("RNI alvo mínimo", value=lo_atual, step=0.1)
                         edit_alvo_max = col_alvo2.number_input("RNI alvo máximo", value=hi_atual, step=0.1)
                         edit_dose = st.number_input("Dose semanal (mg)", min_value=0.0,
-                                                     value=float(p.get("weeklyDose", 0)), step=2.5)
+                                                     value=float(p.get("weeklyDose") or 0), step=2.5)
                         edit_meds = st.text_area("Medicamentos em uso", value=p.get("meds", ""))
 
                     salvar_edicao = st.form_submit_button("💾 Salvar Alterações", type="primary")
