@@ -85,7 +85,6 @@ def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Tabela de Pacientes
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pacientes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,7 +102,6 @@ def init_db():
         )
     """)
     
-    # Tabela de Histórico de RNI e Faltas
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS historico_rni (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -118,67 +116,66 @@ def init_db():
     conn.commit()
     conn.close()
 
-    # Migração automática do antigo JSON para SQLite se existir
-    migrar_json_para_sqlite()
-
-def migrar_json_para_sqlite():
-    if os.path.exists("dados.json"):
-        try:
-            with open("dados.json", "r", encoding="utf-8") as f:
-                dados = json.load(f)
-            
-            conn = sqlite3.connect(DB_NAME)
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT COUNT(*) FROM pacientes")
-            if cursor.fetchone()[0] == 0:  # Só migra se o BD estiver vazio
-                for p in dados.get("patients", []):
-                    cursor.execute("""
-                        INSERT INTO pacientes (name, age, contact, indication, target, weekly_dose, level, status, meds, needs_support, evolution)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        p.get("name"),
-                        p.get("age", 60),
-                        p.get("contact", ""),
-                        p.get("indication", "Fibrilação Atrial"),
-                        p.get("target", "2.0-3.0"),
-                        p.get("weeklyDose", 35.0),
-                        p.get("level", "Médio"),
-                        p.get("status", "Ativo"),
-                        p.get("meds", ""),
-                        p.get("needs_support", "Não"),
-                        p.get("evolution", "")
-                    ))
-                    patient_id = cursor.lastrowid
-                    
-                    for rni in p.get("rniHistory", []):
-                        cursor.execute("""
-                            INSERT INTO historico_rni (patient_id, date, value, status, obs)
-                            VALUES (?, ?, ?, ?, ?)
-                        """, (
-                            patient_id,
-                            rni.get("date"),
-                            rni.get("value"),
-                            rni.get("status", "Normal"),
-                            rni.get("obs", "")
-                        ))
-                conn.commit()
-            conn.close()
-            # Renomeia o json para evitar duplicação em execuções futuras
-            os.rename("dados.json", "dados_backup.json")
-        except Exception as e:
-            pass
-
 init_db()
 
-# Helper SQL Queries
 def get_db_connection():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
 
 # ==============================================================================
-# 3. BANCO DE INTERAÇÕES MEDICAMENTOSAS COM A VARFARINA
+# 3. FUNÇÕES DE EXPORTAR E IMPORTAR PROJETO (BACKUP / RESTORE)
+# ==============================================================================
+def exportar_projeto_json():
+    conn = get_db_connection()
+    pacientes = [dict(p) for p in conn.execute("SELECT * FROM pacientes").fetchall()]
+    historico = [dict(h) for h in conn.execute("SELECT * FROM historico_rni").fetchall()]
+    conn.close()
+    
+    dados_exportacao = {
+        "versao": "2.0",
+        "data_backup": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "pacientes": pacientes,
+        "historico_rni": historico
+    }
+    return json.dumps(dados_exportacao, ensure_ascii=False, indent=2)
+
+def importar_projeto_json(conteudo_json):
+    try:
+        dados = json.loads(conteudo_json)
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        
+        # Limpa as tabelas atuais para substituir pelos dados importados
+        cursor.execute("DELETE FROM historico_rni")
+        cursor.execute("DELETE FROM pacientes")
+        
+        for p in dados.get("pacientes", []):
+            cursor.execute("""
+                INSERT INTO pacientes (id, name, age, contact, indication, target, weekly_dose, level, status, meds, needs_support, evolution)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                p.get("id"), p.get("name"), p.get("age"), p.get("contact"), p.get("indication"),
+                p.get("target"), p.get("weekly_dose"), p.get("level"), p.get("status"),
+                p.get("meds"), p.get("needs_support"), p.get("evolution")
+            ))
+            
+        for h in dados.get("historico_rni", []):
+            cursor.execute("""
+                INSERT INTO historico_rni (id, patient_id, date, value, status, obs)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                h.get("id"), h.get("patient_id"), h.get("date"), h.get("value"), h.get("status"), h.get("obs")
+            ))
+            
+        conn.commit()
+        conn.close()
+        return True, "Projeto importado e restaurado com sucesso!"
+    except Exception as e:
+        return False, f"Erro ao importar arquivo: {str(e)}"
+
+# ==============================================================================
+# 4. BANCO DE INTERAÇÕES MEDICAMENTOSAS COM A VARFARINA
 # ==============================================================================
 INTERACOES_VARFARINA = {
     "AMIODARONA": {"risco": "Alta", "efeito": "Inibe CYP2C9/3A4 e aumenta expressivamente o RNI com risco de hemorragia.", "conduta": "Reduzir dose da Varfarina em 30% a 50% e monitorar RNI semanalmente."},
@@ -216,12 +213,11 @@ def checar_interacoes(texto_meds):
 def contar_medicamentos(texto_meds):
     if not texto_meds or not texto_meds.strip():
         return 0
-    # Separa por vírgula, ponto e vírgula ou quebras de linha
     itens = [m.strip() for m in texto_meds.replace('\n', ',').replace(';', ',').split(',') if m.strip()]
     return len(itens)
 
 # ==============================================================================
-# 4. CÁLCULOS TTR E UTILITÁRIOS
+# 5. CÁLCULOS TTR E UTILITÁRIOS
 # ==============================================================================
 def calcular_ttr_rosendaal(historico, min_alvo, max_alvo):
     historico_rni = [e for e in historico if e.get('value') is not None]
@@ -282,13 +278,14 @@ def obter_status_paciente(p, historico):
         return 'Precisa de Atenção'
 
 # ==============================================================================
-# 5. SIDEBAR E NAVEGAÇÃO
+# 6. SIDEBAR, NAVEGAÇÃO E EXPORTAR/IMPORTAR PROJETO
 # ==============================================================================
-st.sidebar.markdown("### 🩺 Ambulatório RNI (SQLite)")
+st.sidebar.markdown("### 🩺 Ambulatório RNI")
 
 modo_visao = st.sidebar.radio("Navegação:", ["🏠 Visão Geral (Dashboard)", "👤 Ficha do Paciente"], index=0)
 st.sidebar.markdown("---")
 
+# GERENCIAMENTO DE CADASTRO
 with st.sidebar.expander("➕ Cadastrar Novo Paciente"):
     with st.form("form_add_paciente", clear_on_submit=True):
         novo_nome = st.text_input("Nome Completo:")
@@ -298,7 +295,7 @@ with st.sidebar.expander("➕ Cadastrar Novo Paciente"):
         nova_faixa = st.selectbox("Faixa Alvo RNI:", ["2.0-3.0", "2.5-3.5", "1.5-2.0"])
         nova_dose = st.number_input("Dose Semanal Inicial (mg):", value=35.0, step=2.5)
         novo_apoio = st.selectbox("Necessita de Apoio/Cuidador?", ["Não", "Sim"])
-        meds_iniciais = st.text_area("Medicamentos de Uso Contínuo:", placeholder="Ex: Amiodarona 200mg, Omeprazol 20mg, Losartana 50mg, Atenolol 50mg, AAS 100mg...")
+        meds_iniciais = st.text_area("Medicamentos de Uso Contínuo:", placeholder="Ex: Amiodarona 200mg, Omeprazol 20mg, Losartana 50mg, AAS 100mg...")
         
         if st.form_submit_button("Salvar Paciente") and novo_nome:
             conn = get_db_connection()
@@ -309,27 +306,59 @@ with st.sidebar.expander("➕ Cadastrar Novo Paciente"):
             """, (novo_nome, nova_idade, novo_contato, nova_indicacao, nova_faixa, nova_dose, "Médio", "Ativo", meds_iniciais, novo_apoio, ""))
             conn.commit()
             conn.close()
-            st.success("Paciente cadastrado com sucesso no SQLite!")
+            st.success("Paciente cadastrado!")
             st.rerun()
 
+st.sidebar.markdown("---")
+
+# EXPORTAÇÃO E IMPORTAÇÃO COMPLETA DO PROJETO (BACKUP / RESTORE)
+with st.sidebar.expander("💾 Gestão de Dados do Projeto"):
+    st.caption("Salve ou restaure todo o projeto (pacientes, histórico de RNI e evoluções).")
+    
+    # 1. Exportar
+    json_backup = exportar_projeto_json()
+    nome_arq_backup = f"backup_ambulatorio_rni_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    
+    st.download_button(
+        label="📥 Exportar Backup do Projeto",
+        data=json_backup,
+        file_name=nome_arq_backup,
+        mime="application/json",
+        use_container_width=True,
+        help="Baixa um arquivo com todos os dados atuais do sistema para guardar no seu computador/Documentos."
+    )
+    
+    st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+    
+    # 2. Importar
+    arquivo_upload = st.file_uploader("📤 Importar Backup do Projeto", type=["json"], help="Selecione um arquivo de backup previamente exportado.")
+    if arquivo_upload is not None:
+        if st.button("🔄 Restaurar Dados do Arquivo", use_container_width=True, type="primary"):
+            conteudo = arquivo_upload.read().decode("utf-8")
+            sucesso, msg = importar_projeto_json(conteudo)
+            if sucesso:
+                st.success(msg)
+                st.rerun()
+            else:
+                st.error(msg)
+
 # ==============================================================================
-# 6. MODO 1: DASHBOARD POPULACIONAL E NOVOS GRÁFICOS
+# 7. MODO 1: DASHBOARD POPULACIONAL
 # ==============================================================================
 if modo_visao == "🏠 Visão Geral (Dashboard)":
     st.title("📊 Painel Geral do Ambulatório de Anticoagulação")
-    st.caption("Mapeamento da população, perfis de complexidade, idosos, polifarmácia e interações no BD SQLite.")
+    st.caption("Mapeamento da população, perfis de complexidade, idosos, polifarmácia e interações.")
     
     conn = get_db_connection()
     pacientes_raw = conn.execute("SELECT * FROM pacientes").fetchall()
     
     if not pacientes_raw:
-        st.warning("Nenhum paciente cadastrado no banco de dados.")
+        st.warning("Nenhum paciente cadastrado no banco de dados. Utilize a opção na barra lateral ou importe um projeto salvo.")
         conn.close()
         st.stop()
 
     lista_pacientes = [dict(p) for p in pacientes_raw]
     
-    # Processamento de métricas gerais
     total_pacientes = len(lista_pacientes)
     idosos = sum(1 for p in lista_pacientes if p['age'] >= 60)
     idosos_mais_velhos = sum(1 for p in lista_pacientes if p['age'] >= 80)
@@ -337,18 +366,15 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     
     polimedicados = 0
     interagentes_dict = {}
-
     status_categorias = []
     
     for p in lista_pacientes:
-        # Pega histórico do paciente
         rni_rows = conn.execute("SELECT * FROM historico_rni WHERE patient_id = ? ORDER BY date DESC", (p['id'],)).fetchall()
         rni_hist = [dict(r) for r in rni_rows]
         
         cat = obter_status_paciente(p, rni_hist)
         status_categorias.append(cat)
         
-        # Análise de medicamentos
         meds_texto = p['meds'] or ""
         qtd_meds = contar_medicamentos(meds_texto)
         if qtd_meds >= 5:
@@ -428,14 +454,14 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         st.plotly_chart(fig_poli, use_container_width=True)
 
 # ==============================================================================
-# 7. MODO 2: FICHA DO PACIENTE
+# 8. MODO 2: FICHA DO PACIENTE
 # ==============================================================================
 else:
     conn = get_db_connection()
     pacientes_raw = conn.execute("SELECT * FROM pacientes ORDER BY status ASC, name ASC").fetchall()
     
     if not pacientes_raw:
-        st.warning("Cadastre um paciente na barra lateral.")
+        st.warning("Cadastre um paciente na barra lateral ou importe os dados do projeto.")
         conn.close()
         st.stop()
 
@@ -445,13 +471,12 @@ else:
     paciente_sel_index = st.sidebar.radio("Selecione o paciente:", range(len(opcoes_pacientes)), format_func=lambda i: opcoes_pacientes[i])
     p = lista_pacientes[paciente_sel_index]
     
-    # Histórico de RNI do Paciente
     rni_rows = conn.execute("SELECT * FROM historico_rni WHERE patient_id = ? ORDER BY date DESC", (p['id'],)).fetchall()
     historico_rni = [dict(r) for r in rni_rows]
     
     em_alta = (p['status'] == 'Alta')
 
-    # CABEÇALHO E EDICAO DOS DADOS
+    # CABEÇALHO E EDIÇÃO DOS DADOS
     col_titulo, col_edit_btn, col_status_btn = st.columns([3, 1, 1])
     with col_titulo:
         st.markdown(f"# {'<span style=\"color: #94A3B8;\">👤 ' + p['name'] + ' (Alta Terapêutica)</span>' if em_alta else '👤 ' + p['name']}", unsafe_allow_html=True)
@@ -502,7 +527,6 @@ else:
     cor_ttr, bg_badge, status_ttr = ("#64748B", "#F1F5F9", "Alta") if em_alta else (("#10B981", "#ECFDF5", "Estável") if ttr_valor >= 70.0 else (("#F59E0B", "#FFFBEB", "Alerta") if ttr_valor >= 60.0 else ("#EF4444", "#FEF2F2", "Crítico")))
     level_class = "level-alta" if em_alta else ("level-baixo" if p['level'] == "Baixo" else "level-alto" if p['level'] == "Alto" else "level-medio")
 
-    # Classificação de Idoso
     tag_idoso = " (Idoso 80+)" if p['age'] >= 80 else (" (Idoso 60+)" if p['age'] >= 60 else "")
 
     with col_info1:
@@ -543,13 +567,10 @@ else:
 
     st.markdown("---")
 
-    # ==============================================================================
     # GRÁFICO DE TENDÊNCIA DE RNI
-    # ==============================================================================
     col_grafico, col_novo_rni = st.columns([2, 1])
     with col_grafico:
         st.subheader("📈 Tendência Temporal do RNI")
-        
         historico_rni_validos = [e for e in historico_rni if e.get('value') is not None]
         
         if historico_rni_validos:
@@ -560,16 +581,15 @@ else:
 
             def classificar_ponto(v):
                 if min_alvo <= v <= max_alvo:
-                    return '#10B981' # Verde
+                    return '#10B981'
                 elif v < min_alvo:
-                    return '#EF4444' # Vermelho (Trombose)
+                    return '#EF4444'
                 else:
-                    return '#991B1B' # Vermelho Escuro (Hemorragia)
+                    return '#991B1B'
 
             colors = [classificar_ponto(v) for v in df_chart['value']]
 
             fig_rni = go.Figure()
-
             fig_rni.add_trace(go.Scatter(
                 x=df_chart['date'],
                 y=df_chart['value'],
@@ -585,43 +605,19 @@ else:
                 "margin": {"l": 40, "r": 20, "t": 30, "b": 40},
                 "height": 300,
                 "hovermode": "x unified",
-                "xaxis": {
-                    "showgrid": True,
-                    "gridcolor": "#F1F5F9",
-                    "linecolor": "#CBD5E1",
-                    "ticks": "outside"
-                },
-                "yaxis": {
-                    "showgrid": True,
-                    "gridcolor": "#F1F5F9",
-                    "linecolor": "#CBD5E1",
-                    "zeroline": False,
-                    "range": [max(0.0, df_chart['value'].min() - 0.5), df_chart['value'].max() + 0.8]
-                },
+                "xaxis": {"showgrid": True, "gridcolor": "#F1F5F9", "linecolor": "#CBD5E1"},
+                "yaxis": {"showgrid": True, "gridcolor": "#F1F5F9", "linecolor": "#CBD5E1", "zeroline": False},
                 "shapes": [
-                    {
-                        "type": "rect", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
-                        "y0": min_alvo, "y1": max_alvo,
-                        "fillcolor": "rgba(16, 185, 129, 0.20)", "line": {"width": 0}, "layer": "below"
-                    },
-                    {
-                        "type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
-                        "y0": min_alvo, "y1": min_alvo,
-                        "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}
-                    },
-                    {
-                        "type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
-                        "y0": max_alvo, "y1": max_alvo,
-                        "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}
-                    }
+                    {"type": "rect", "xref": "paper", "yref": "y", "x0": 0, "x1": 1, "y0": min_alvo, "y1": max_alvo, "fillcolor": "rgba(16, 185, 129, 0.20)", "line": {"width": 0}, "layer": "below"},
+                    {"type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1, "y0": min_alvo, "y1": min_alvo, "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}},
+                    {"type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1, "y0": max_alvo, "y1": max_alvo, "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}}
                 ]
             }
 
             fig_rni.update_layout(layout_config)
             st.plotly_chart(fig_rni, use_container_width=True, config={'displayModeBar': False})
-            st.caption("🟢 **Verde:** Faixa Terapêutica Ideal | 🔴 **Vermelho:** Risco de Trombose (RNI baixo) ou Hemorragia (RNI elevado)")
         else:
-            st.info("Nenhum histórico numérico de RNI registrado até o momento.")
+            st.info("Nenhum histórico numérico de RNI registrado.")
 
     with col_novo_rni:
         st.subheader("➕ Registrar RNI")
@@ -640,9 +636,7 @@ else:
 
     st.markdown("---")
 
-    # ==============================================================================
-    # ORDENAÇÃO DAS ABAS
-    # ==============================================================================
+    # ABAS DO PACIENTE
     tab_anamnese, tab_tabela, tab_meds, tab_evolucao = st.tabs([
         "🔍 Roteiro de Decisão & Consulta", 
         "📋 Histórico & Edição de RNI", 
@@ -695,7 +689,6 @@ else:
                     """, (p['id'], data_hoje_str, float(rni_hoje_valor), "Normal", ""))
                     conn.commit()
                 
-                # Recarrega RNI para cálculo
                 rni_rows_updated = conn.execute("SELECT * FROM historico_rni WHERE patient_id = ? ORDER BY date DESC", (p['id'],)).fetchall()
                 historico_rni_up = [dict(r) for r in rni_rows_updated]
                 
@@ -704,7 +697,6 @@ else:
                 rni_validos = [e for e in historico_rni_up if e.get('value') is not None]
                 ult_rni_val = rni_validos[0]['value'] if rni_validos else "N/A"
                 
-                # VERIFICAÇÃO AUTOMÁTICA DE INTERAÇÕES MEDICAMENTOSAS
                 interacoes_casa = checar_interacoes(p['meds'] or "")
                 texto_interacoes_casa = ""
                 if interacoes_casa:
@@ -715,7 +707,6 @@ else:
                         f"{'; '.join([item['conduta'] for item in interacoes_casa])}."
                     )
                 
-                # NARRATIVA CONTINUA EM TEXTO CORRIDO COM MEDICAMENTOS E PERFIL DO PACIENTE
                 apoio_txt = "necessita de apoio/cuidador para tomada de medicamentos" if p['needs_support'] == "Sim" else "possui autonomia para tomada de medicamentos"
                 soap_texto = (
                     f"Evolução Farmacêutica - Ambulatório de Anticoagulação Oral ({data_hoje_fmt}). "
@@ -741,10 +732,10 @@ else:
                 """, (soap_texto, nova_dose_semanal, novo_st, p['id']))
                 conn.commit()
                 conn.close()
-                st.success("Evolução gerada com sucesso e salva no SQLite!")
+                st.success("Evolução gerada com sucesso!")
                 st.rerun()
 
-    # 2. HISTÓRICO DE COLETAS E REGISTRO DE FALTA
+    # 2. HISTÓRICO DE COLETAS
     with tab_tabela:
         st.subheader("📋 Histórico de Coletas - Edição e Gestão")
         
@@ -808,7 +799,7 @@ else:
                 conn.execute("UPDATE pacientes SET meds=? WHERE id=?", (meds_texto, p['id']))
                 conn.commit()
                 conn.close()
-                st.success("Medicamentos atualizados no banco de dados!")
+                st.success("Medicamentos atualizados!")
                 st.rerun()
 
         st.markdown("---")
@@ -828,7 +819,7 @@ else:
         else:
             st.success("✅ Nenhuma interação medicamentosa de alto risco identificada na lista atual.")
 
-    # 4. EVOLUÇÃO FARMACÊUTICA (MV PEP) - COM EXCLUSÃO DO PACIENTE NO FINAL
+    # 4. EVOLUÇÃO FARMACÊUTICA (MV PEP)
     with tab_evolucao:
         st.subheader("📝 Evolução Farmacêutica Narrativa (Padrão MV PEP)")
         st.caption("Você pode editar o texto abaixo diretamente para acrescentar dados antes de copiar para o prontuário eletrônico.")
@@ -840,13 +831,13 @@ else:
             conn.execute("UPDATE pacientes SET evolution=? WHERE id=?", (novo_texto_editado, p['id']))
             conn.commit()
             conn.close()
-            st.success("Texto da evolução atualizado no SQLite!")
+            st.success("Texto da evolução atualizado!")
 
-        # OPÇÃO DE EXCLUIR PACIENTE SOMENTE NESTA ABA
+        # EXCLUSÃO DO PACIENTE
         st.markdown("<br><br><hr>", unsafe_allow_html=True)
         st.markdown("### ⚙️ Gestão do Paciente")
         with st.expander("🚨 Excluir Paciente do Serviço de Farmácia Clínica", expanded=False):
-            st.warning("⚠️ **Atenção:** A exclusão do paciente removerá todos os registros de RNI, evoluções e histórico ambulatorial do banco de dados SQLite de forma irreversível.")
+            st.warning("⚠️ **Atenção:** A exclusão do paciente removerá todos os registros de RNI, evoluções e histórico ambulatorial de forma irreversível.")
             col_del_txt, col_del_btn = st.columns([3, 1])
             with col_del_txt:
                 confirma_exclusao = st.checkbox(f"Estou ciente e desejo excluir o paciente {p['name']} definitivamente.")
@@ -855,7 +846,7 @@ else:
                     conn.execute("DELETE FROM pacientes WHERE id=?", (p['id'],))
                     conn.commit()
                     conn.close()
-                    st.success("Paciente excluído do banco de dados com sucesso!")
+                    st.success("Paciente excluído com sucesso!")
                     st.rerun()
 
     conn.close()
