@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.io as pio
+import plotly.graph_objects as go
 import json
 import os
 from datetime import datetime
@@ -79,26 +79,26 @@ st.markdown("""
 # 2. BANCO DE INTERAÇÕES MEDICAMENTOSAS COM A VARFARINA
 # ==============================================================================
 INTERACOES_VARFARINA = {
-    "AMIODARONA": {"risco": "Alta", "efeito": "Inibe CYP2C9/3A4. Aumenta expressivamente o RNI.", "conduta": "Reduzir dose da Varfarina em 30% a 50% e monitorar RNI semanalmente."},
-    "AZITROMICINA": {"risco": "Moderada", "efeito": "Alteração da flora intestinal e/ou clearance.", "conduta": "Monitorar RNI em 3 a 5 dias após início do antibiótico."},
-    "CIPROFLOXACINO": {"risco": "Alta", "efeito": "Inibição de metabolização hepática. Risco elevado de sangramento.", "conduta": "Monitorar RNI frequente ou ajustar dose provisoriamente."},
-    "SULFAMETOXAZOL": {"risco": "Alta", "efeito": "Deslocamento proteico e inibição da CYP2C9.", "conduta": "Potencialização severa. Reduzir dose e monitorar RNI precocemente."},
-    "TRIMETOPRIMA": {"risco": "Alta", "efeito": "Potencializa efeito anticoagulante.", "conduta": "Reduzir dose e monitorar RNI em 3 dias."},
-    "FLUCONAZOL": {"risco": "Alta", "efeito": "Inibidor potente da CYP2C9. Eleva RNI acentuadamente.", "conduta": "Reduzir dose em até 50% e acompanhar RNI estritamente."},
-    "CETOCONAZOL": {"risco": "Alta", "efeito": "Inibição enzimática. Aumento do risco hemorrágico.", "conduta": "Acompanhamento rigoroso de RNI."},
-    "OMEPRAZOL": {"risco": "Moderada", "efeito": "Discreta inibição CYP2C19. Pode elevar RNI discretamente.", "conduta": "Monitorar se houver alteração de dosagem."},
-    "SIMVASTATINA": {"risco": "Moderada", "efeito": "Aumento do efeito anticoagulante e risco de rabdomiólise.", "conduta": "Avaliar RNI e sintomas musculares."},
-    "PARACETAMOL": {"risco": "Moderada", "efeito": "Uso contínuo (>2g/dia) pode inibir fatores de coagulação.", "conduta": "Preferir doses baixas e esporádicas. Se uso contínuo, checar RNI."},
-    "IBUPROFENO": {"risco": "Alta", "efeito": "Gastrolesividade e inibição plaquetária. Alto risco de sangramento.", "conduta": "Evitar AINEs. Se indispensável, associar gastroproteção e monitorar."},
-    "NIMESULIDA": {"risco": "Alta", "efeito": "Aumento do risco de sangramento gastrointestinal.", "conduta": "Evitar coadministração."},
-    "DICLOFENACO": {"risco": "Alta", "efeito": "Antiagregação e irritação gástrica associada.", "conduta": "Substituir por analgésico sem ação plaquetária."},
+    "AMIODARONA": {"risco": "Alta", "efeito": "Inibe CYP2C9/3A4 e aumenta expressivamente o RNI com risco de hemorragia.", "conduta": "Reduzir dose da Varfarina em 30% a 50% e monitorar RNI semanalmente."},
+    "AZITROMICINA": {"risco": "Moderada", "efeito": "Altera flora intestinal/clearance e pode aumentar o RNI.", "conduta": "Monitorar RNI em 3 a 5 dias após início do antibiótico."},
+    "CIPROFLOXACINO": {"risco": "Alta", "efeito": "Inibe metabolização hepática e eleva o RNI (risco de sangramento).", "conduta": "Monitorar RNI com frequência ou ajustar dose provisoriamente."},
+    "SULFAMETOXAZOL": {"risco": "Alta", "efeito": "Potencializa fortemente a Varfarina aumentando o RNI.", "conduta": "Reduzir dose e monitorar RNI precocemente."},
+    "TRIMETOPRIMA": {"risco": "Alta", "efeito": "Potencializa o efeito anticoagulante e eleva RNI.", "conduta": "Reduzir dose e monitorar RNI em 3 dias."},
+    "FLUCONAZOL": {"risco": "Alta", "efeito": "Inibidor potente da CYP2C9, eleva o RNI acentuadamente.", "conduta": "Reduzir dose em até 50% e acompanhar RNI estritamente."},
+    "CETOCONAZOL": {"risco": "Alta", "efeito": "Inibição enzimática com elevação do RNI e risco hemorrágico.", "conduta": "Acompanhamento rigoroso de RNI."},
+    "OMEPRAZOL": {"risco": "Moderada", "efeito": "Inibição discreta da CYP2C19, podendo elevar levemente o RNI.", "conduta": "Monitorar se houver alteração de dosagem."},
+    "SIMVASTATINA": {"risco": "Moderada", "efeito": "Aumenta o efeito anticoagulante e o RNI.", "conduta": "Avaliar RNI e sintomas musculares."},
+    "PARACETAMOL": {"risco": "Moderada", "efeito": "Uso contínuo (>2g/dia) inibe fatores de coagulação e eleva RNI.", "conduta": "Preferir doses baixas e esporádicas. Se uso contínuo, checar RNI."},
+    "IBUPROFENO": {"risco": "Alta", "efeito": "Gastrolesividade e inibição plaquetária (risco hemorrágico alto).", "conduta": "Evitar AINEs. Se indispensável, associar gastroproteção e monitorar."},
+    "NIMESULIDA": {"risco": "Alta", "efeito": "Risco elevado de sangramento gastrointestinal.", "conduta": "Evitar coadministração."},
+    "DICLOFENACO": {"risco": "Alta", "efeito": "Antiagregação plaquetária e risco de sangramento.", "conduta": "Substituir por analgésico sem ação plaquetária."},
     "AAS": {"risco": "Alta", "efeito": "Sinergismo hemorrágico expressivo.", "conduta": "Uso apenas sob indicação formal (ex: prótese). Monitorar estritamente."},
-    "ASPIRINA": {"risco": "Alta", "efeito": "Inibição irreversível das plaquetas + dano de mucosa.", "conduta": "Verificar indicação formal da dupla terapia."},
-    "CARBAMAZEPINA": {"risco": "Alta", "efeito": "Indutor enzimático potente (CYP3A4/2C9). Reduz RNI.", "conduta": "Pode necessitar de doses substancialmente maiores de Varfarina."},
-    "FENITOINA": {"risco": "Alta", "efeito": "Efeito bifásico (pode aumentar ou diminuir RNI).", "conduta": "Monitorar RNI e níveis de fenitoína com frequência."},
-    "RIFAMPECINA": {"risco": "Alta", "efeito": "Indutor enzimático potente. Reduz acentuadamente o RNI.", "conduta": "Poderá exigir aumento expressivo da dose da Varfarina."},
-    "SERTRALINA": {"risco": "Moderada", "efeito": "ISRSs alteram função plaquetária e aumentam risco de sangramento.", "conduta": "Acompanhar sinais clínicos de sangramento."},
-    "FLUOXETINA": {"risco": "Moderada", "efeito": "Inibição metabólica e alteração de adesão plaquetária.", "conduta": "Monitorar RNI após início/ajuste."}
+    "ASPIRINA": {"risco": "Alta", "efeito": "Inibição irreversível das plaquetas e aumento do risco hemorrágico.", "conduta": "Verificar indicação formal da dupla terapia."},
+    "CARBAMAZEPINA": {"risco": "Alta", "efeito": "Indutor enzimático potente (CYP3A4/2C9), reduz o RNI (risco de trombose).", "conduta": "Pode necessitar de doses maiores de Varfarina."},
+    "FENITOINA": {"risco": "Alta", "efeito": "Efeito bifásico (pode elevar ou reduzir o RNI).", "conduta": "Monitorar RNI e níveis de fenitoína com frequência."},
+    "RIFAMPECINA": {"risco": "Alta", "efeito": "Indutor enzimático potente, reduz acentuadamente o RNI (risco de trombose).", "conduta": "Poderá exigir aumento expressivo da dose de Varfarina."},
+    "SERTRALINA": {"risco": "Moderada", "efeito": "Altera função plaquetária e aumenta risco de sangramento.", "conduta": "Acompanhar sinais clínicos de sangramento."},
+    "FLUOXETINA": {"risco": "Moderada", "efeito": "Inibição metabólica e alteração da adesão plaquetária.", "conduta": "Monitorar RNI após início/ajuste."}
 }
 
 def checar_interacoes(texto_meds):
@@ -115,7 +115,6 @@ def checar_interacoes(texto_meds):
 # 3. CÁLCULOS E PERSISTÊNCIA DE DADOS
 # ==============================================================================
 def calcular_ttr_rosendaal(historico, min_alvo, max_alvo):
-    # Filtra apenas registros válidos com valor numérico de RNI
     historico_rni = [e for e in historico if e.get('value') is not None]
     if not historico_rni or len(historico_rni) < 2:
         return 0.0
@@ -384,13 +383,12 @@ else:
     st.markdown("---")
 
     # ==============================================================================
-    # GRÁFICO DE TENDÊNCIA EM ALTA QUALIDADE USANDO JSON CONFIGURAÇÃO NO PLOTLY
+    # GRÁFICO DE LINHAS COM FAIXA VERDE E PONTOS DE RISCO EM VERMELHO
     # ==============================================================================
     col_grafico, col_novo_rni = st.columns([2, 1])
     with col_grafico:
-        st.subheader("📈 Tendência Temporal do RNI (Alta Definção)")
+        st.subheader("📈 Tendência Temporal do RNI")
         
-        # Filtra histórico apenas para exames com RNI válido
         historico_rni_validos = [e for e in p.get('rniHistory', []) if e.get('value') is not None]
         
         if historico_rni_validos:
@@ -399,72 +397,81 @@ else:
             df_chart['value'] = df_chart['value'].astype(float)
             df_chart = df_chart.sort_values('date')
 
-            fig_rni = px.line(
-                df_chart, 
-                x='date', 
-                y='value', 
-                markers=True, 
-                labels={'date': 'Data da Coleta', 'value': 'Resultado do RNI'}
-            )
+            # Definição de cores dos pontos: Verde na faixa ideal, tons de vermelho fora da faixa
+            def classificar_ponto(v):
+                if min_alvo <= v <= max_alvo:
+                    return '#10B981' # Verde ideal
+                elif v < min_alvo:
+                    return '#EF4444' # Vermelho (Risco de Trombose)
+                else:
+                    return '#991B1B' # Vermelho escuro/Vinho (Risco de Hemorragia)
 
-            # ESTILIZAÇÃO AVANÇADA VIA DICIONÁRIO / CONFIGURAÇÃO JSON
-            plotly_json_config = {
-                "layout": {
-                    "template": "plotly_white",
-                    "font": {"family": "Inter, sans-serif", "size": 12, "color": "#1E293B"},
-                    "margin": {"l": 40, "r": 20, "t": 30, "b": 40},
-                    "height": 300,
-                    "hovermode": "x unified",
-                    "xaxis": {
-                        "showgrid": True,
-                        "gridcolor": "#F1F5F9",
-                        "linecolor": "#CBD5E1",
-                        "ticks": "outside"
+            colors = [classificar_ponto(v) for v in df_chart['value']]
+
+            fig_rni = go.Figure()
+
+            # Linha principal de tendência
+            fig_rni.add_trace(go.Scatter(
+                x=df_chart['date'],
+                y=df_chart['value'],
+                mode='lines+markers',
+                line=dict(color='#64748B', width=2),
+                marker=dict(size=10, color=colors, line=dict(width=1.5, color='#FFFFFF')),
+                name='RNI'
+            ))
+
+            # Layout customizado via Dict/JSON com Faixa Verde de Destaque
+            layout_config = {
+                "template": "plotly_white",
+                "font": {"family": "Inter, sans-serif", "size": 12, "color": "#1E293B"},
+                "margin": {"l": 40, "r": 20, "t": 30, "b": 40},
+                "height": 300,
+                "hovermode": "x unified",
+                "xaxis": {
+                    "showgrid": True,
+                    "gridcolor": "#F1F5F9",
+                    "linecolor": "#CBD5E1",
+                    "ticks": "outside"
+                },
+                "yaxis": {
+                    "showgrid": True,
+                    "gridcolor": "#F1F5F9",
+                    "linecolor": "#CBD5E1",
+                    "zeroline": False,
+                    "range": [max(0.0, df_chart['value'].min() - 0.5), df_chart['value'].max() + 0.8]
+                },
+                "shapes": [
+                    # Faixa Verde Terapêutica Destacada
+                    {
+                        "type": "rect",
+                        "xref": "paper",
+                        "yref": "y",
+                        "x0": 0,
+                        "x1": 1,
+                        "y0": min_alvo,
+                        "y1": max_alvo,
+                        "fillcolor": "rgba(16, 185, 129, 0.20)",
+                        "line": {"width": 0},
+                        "layer": "below"
                     },
-                    "yaxis": {
-                        "showgrid": True,
-                        "gridcolor": "#F1F5F9",
-                        "linecolor": "#CBD5E1",
-                        "zeroline": False,
-                        "range": [max(0.0, df_chart['value'].min() - 0.5), df_chart['value'].max() + 0.8]
+                    # Limite Inferior (Verde)
+                    {
+                        "type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
+                        "y0": min_alvo, "y1": min_alvo,
+                        "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}
                     },
-                    "shapes": [
-                        # Faixa verde de Alvo Alvo RNI
-                        {
-                            "type": "rect",
-                            "xref": "paper",
-                            "yref": "y",
-                            "x0": 0,
-                            "x1": 1,
-                            "y0": min_alvo,
-                            "y1": max_alvo,
-                            "fillcolor": "rgba(16, 185, 129, 0.12)",
-                            "line": {"width": 0},
-                            "layer": "below"
-                        },
-                        # Linha Limite Inferior
-                        {
-                            "type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
-                            "y0": min_alvo, "y1": min_alvo,
-                            "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}
-                        },
-                        # Linha Limite Superior
-                        {
-                            "type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
-                            "y0": max_alvo, "y1": max_alvo,
-                            "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}
-                        }
-                    ]
-                }
+                    # Limite Superior (Verde)
+                    {
+                        "type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
+                        "y0": max_alvo, "y1": max_alvo,
+                        "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}
+                    }
+                ]
             }
 
-            fig_rni.update_traces(
-                line=dict(color='#2563EB', width=3, shape='linear'),
-                marker=dict(size=9, color='#1D4ED8', symbol='circle', line=dict(width=2, color='#FFFFFF'))
-            )
-            fig_rni.update_layout(plotly_json_config["layout"])
-
+            fig_rni.update_layout(layout_config)
             st.plotly_chart(fig_rni, use_container_width=True, config={'displayModeBar': False})
+            st.caption("🟢 **Verde:** Faixa Terapêutica Ideal | 🔴 **Vermelho:** Risco de Trombose (RNI baixo) ou Hemorragia (RNI elevado)")
         else:
             st.info("Nenhum histórico numérico de RNI registrado até o momento.")
 
@@ -481,12 +488,18 @@ else:
 
     st.markdown("---")
 
-    # ABAS DA FICHA
-    tab_anamnese, tab_evolucao, tab_tabela, tab_meds = st.tabs([
+    # ==============================================================================
+    # ORDENAÇÃO DAS ABAS:
+    # 1. Roteiro de Decisão & Consulta
+    # 2. Histórico & Edição de RNI
+    # 3. Medicamentos em Casa & Alertas (ANTES DA EVOLUÇÃO)
+    # 4. Evolução Farmacêutica (MV PEP) - (COM OPÇÃO DE EXCLUIR PACIENTE NO FINAL)
+    # ==============================================================================
+    tab_anamnese, tab_tabela, tab_meds, tab_evolucao = st.tabs([
         "🔍 Roteiro de Decisão & Consulta", 
-        "📝 Evolução Farmacêutica (MV PEP)", 
         "📋 Histórico & Edição de RNI", 
-        "💊 Medicamentos em Casa & Alertas"
+        "💊 Medicamentos em Casa & Alertas",
+        "📝 Evolução Farmacêutica (MV PEP)"
     ])
 
     # 1. ANAMNESE E GERADOR DE EVOLUÇÃO
@@ -535,13 +548,24 @@ else:
                 rni_validos = [e for e in p['rniHistory'] if e.get('value') is not None]
                 ult_rni_val = rni_validos[0]['value'] if rni_validos else "N/A"
                 
-                # NARRATIVA DIRETA E CONTINUA EM TEXTO CORRIDO
+                # VERIFICAÇÃO AUTOMÁTICA DE INTERAÇÕES MEDICAMENTOSAS DE CASA QUE ALTERAM O RNI
+                interacoes_casa = checar_interacoes(p.get('meds', ''))
+                texto_interacoes_casa = ""
+                if interacoes_casa:
+                    meds_alerta = [f"{item['medicamento']} ({item['efeito']})" for item in interacoes_casa]
+                    texto_interacoes_casa = (
+                        f" Em análise da farmacoterapia de uso domiciliário, identificou-se o uso de medicamento(s) com potencial de alterar o valor do RNI: "
+                        f"{'; '.join(meds_alerta)}. Foi reforçada a necessidade de monitorização e alinhada a conduta recomendada: "
+                        f"{'; '.join([item['conduta'] for item in interacoes_casa])}."
+                    )
+                
+                # NARRATIVA CONTINUA EM TEXTO CORRIDO COM MEDICAMENTOS INCLUÍDOS
                 soap_texto = (
                     f"Evolução Farmacêutica - Ambulatório de Anticoagulação Oral ({data_hoje_fmt}). "
                     f"Paciente {p['name']}, {p.get('age', 'N/A')} anos, em acompanhamento ambulatorial para manejo de anticoagulação por {p.get('indication', 'N/A')}. "
                     f"Ao interrogatório clínico, nega intercorrências graves, relatando em relação a sangramentos: {sinais_sangramento.lower()} e sobre sintomas tromboembólicos: {sinais_trombose.lower()}. "
                     f"Quanto ao perfil de adesão farmacoterapêutica, refere {esquecimento.lower()}, associado a {alteracao_dieta.lower()} no padrão alimentar habitual. "
-                    f"Em relação à farmacoterapia concomitante, observa-se {interacao_med.lower()}{f' ({detalhe_interacao})' if detalhe_interacao else ''}. "
+                    f"Em relação à farmacoterapia concomitante, observa-se {interacao_med.lower()}{f' ({detalhe_interacao})' if detalhe_interacao else ''}.{texto_interacoes_casa} "
                     f"{f'Informações complementares relatadas: {obs_clinicas}. ' if obs_clinicas else ''}"
                     f"Ao exame objetivo e dados laboratoriais, aponta-se RNI atual de {ult_rni_val} para uma faixa alvo terapêutica estabelecida de {p.get('target', '2.0-3.0')}. "
                     f"O cálculo de controle de estabilidade indica Time in Therapeutic Range (TTR) pelo Método de Rosendaal de {ttr_atual:.1f}% e TTR Direto de {ttr_dir:.1f}% ({ex_f} de {tot_ex} exames na faixa). "
@@ -562,26 +586,10 @@ else:
                 st.success("Evolução gerada! Disponível na aba 'Evolução Farmacêutica'.")
                 st.rerun()
 
-    # 2. EVOLUÇÃO EDITÁVEL
-    with tab_evolucao:
-        st.subheader("📝 Evolução Farmacêutica Narrativa (Padrão MV PEP)")
-        st.caption("Você pode editar o texto abaixo diretamente para acrescentar dados antes de copiar para o prontuário eletrônico.")
-        
-        texto_evol_atual = p.get('evolution', '')
-        novo_texto_editado = st.text_area("Texto Corrido Editável:", value=texto_evol_atual, height=350)
-        
-        c_btn1, c_btn2 = st.columns([1, 4])
-        with c_btn1:
-            if st.button("💾 Salvar Alterações no Texto"):
-                p['evolution'] = novo_texto_editado
-                salvar_dados_json(st.session_state.dados)
-                st.success("Texto da evolução atualizado!")
-
-    # 3. HISTÓRICO, EDIÇÃO E EXCLUSÃO DE RNI + OPÇÃO DE REGISTRO DE FALTA
+    # 2. HISTÓRICO DE COLETAS E REGISTRO DE FALTA
     with tab_tabela:
         st.subheader("📋 Histórico de Coletas - Edição e Gestão")
         
-        # BOTÃO PARA REGISTRAR FALTA
         with st.expander("🚨 Registrar Ausência / Paciente Faltou à Consulta", expanded=False):
             with st.form("form_registra_falta"):
                 data_falta = st.date_input("Data da Consulta Não Comparecida:", value=datetime.today())
@@ -630,9 +638,10 @@ else:
         else:
             st.info("Sem exames ou ausências registradas.")
 
-    # 4. MEDICAMENTOS EM CASA E ALERTAS DE INTERAÇÃO
+    # 3. MEDICAMENTOS EM CASA E ALERTAS (POSICIONADO ANTES DA EVOLUÇÃO)
     with tab_meds:
         st.subheader("💊 Medicamentos de Uso Domiciliar e Alertas Clínicos")
+        st.caption("Cadastre abaixo os medicamentos que o paciente utiliza em casa. Os fármacos com interação de RNI serão automaticamente integrados na Evolução Farmacêutica.")
         
         with st.form("form_edit_meds"):
             meds_texto = st.text_area("Relação de Medicamentos em Uso em Casa:", value=p.get('meds', ''), height=120, placeholder="Ex: Amiodarona 200mg, Omeprazol 20mg, Paracetamol 750mg...")
@@ -652,25 +661,37 @@ else:
                 st.markdown(f"""
                 <div class="alert-card {classe_card}">
                     <div style="font-size: 1rem; font-weight: 700;">🚨 {inter['medicamento']} — Risco de Interação {inter['risco'].upper()}</div>
-                    <div style="margin-top: 4px; font-size: 0.9rem;"><b>Efeito Clínico:</b> {inter['efeito']}</div>
+                    <div style="margin-top: 4px; font-size: 0.9rem;"><b>Efeito no RNI / Clínico:</b> {inter['efeito']}</div>
                     <div style="margin-top: 2px; font-size: 0.9rem;"><b>Recomendação / Conduta:</b> {inter['conduta']}</div>
                 </div>
                 """, unsafe_allow_html=True)
         else:
             st.success("✅ Nenhuma interação medicamentosa de alto risco identificada na lista atual.")
 
-    # ==============================================================================
-    # 8. ÁREA DE SEGURANÇA: EXCLUSÃO DEFINITIVA DO PACIENTE
-    # ==============================================================================
-    st.markdown("---")
-    with st.expander("⚙️ Opções Avançadas / Excluir Paciente do Serviço"):
-        st.warning("⚠️ **Atenção:** A exclusão do paciente removerá todos os registros de RNI, evoluções e histórico ambulatorial associados de forma irreversível.")
-        col_del_txt, col_del_btn = st.columns([3, 1])
-        with col_del_txt:
-            confirma_exclusao = st.checkbox(f"Estou ciente e desejo excluir o paciente {p['name']} do sistema.")
-        with col_del_btn:
-            if st.button("🗑️ Excluir Paciente", type="primary", disabled=not confirma_exclusao, use_container_width=True):
-                st.session_state.dados["patients"].pop(paciente_sel_index)
-                salvar_dados_json(st.session_state.dados)
-                st.success("Paciente excluído com sucesso!")
-                st.rerun()
+    # 4. EVOLUÇÃO FARMACÊUTICA (MV PEP) - COM EXCLUSÃO DE PACIENTE NO FINAL
+    with tab_evolucao:
+        st.subheader("📝 Evolução Farmacêutica Narrativa (Padrão MV PEP)")
+        st.caption("Você pode editar o texto abaixo diretamente para acrescentar dados antes de copiar para o prontuário eletrônico.")
+        
+        texto_evol_atual = p.get('evolution', '')
+        novo_texto_editado = st.text_area("Texto Corrido Editável:", value=texto_evol_atual, height=350)
+        
+        if st.button("💾 Salvar Alterações no Texto"):
+            p['evolution'] = novo_texto_editado
+            salvar_dados_json(st.session_state.dados)
+            st.success("Texto da evolução atualizado!")
+
+        # OPÇÃO DE EXCLUIR PACIENTE SOMENTE NESTA ABA
+        st.markdown("<br><br><hr>", unsafe_allow_html=True)
+        st.markdown("### ⚙️ Gestão do Paciente")
+        with st.expander("🚨 Excluir Paciente do Serviço de Farmácia Clínica", expanded=False):
+            st.warning("⚠️ **Atenção:** A exclusão do paciente removerá todos os registros de RNI, evoluções e histórico ambulatorial associados de forma irreversível.")
+            col_del_txt, col_del_btn = st.columns([3, 1])
+            with col_del_txt:
+                confirma_exclusao = st.checkbox(f"Estou ciente e desejo excluir o paciente {p['name']} definitivamente.")
+            with col_del_btn:
+                if st.button("🗑️ Excluir Paciente", type="primary", disabled=not confirma_exclusao, use_container_width=True):
+                    st.session_state.dados["patients"].pop(paciente_sel_index)
+                    salvar_dados_json(st.session_state.dados)
+                    st.success("Paciente excluído com sucesso!")
+                    st.rerun()
