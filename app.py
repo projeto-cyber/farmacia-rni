@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.io as pio
 import json
 import os
 from datetime import datetime
@@ -114,10 +115,12 @@ def checar_interacoes(texto_meds):
 # 3. CÁLCULOS E PERSISTÊNCIA DE DADOS
 # ==============================================================================
 def calcular_ttr_rosendaal(historico, min_alvo, max_alvo):
-    if not historico or len(historico) < 2:
+    # Filtra apenas registros válidos com valor numérico de RNI
+    historico_rni = [e for e in historico if e.get('value') is not None]
+    if not historico_rni or len(historico_rni) < 2:
         return 0.0
     try:
-        df = pd.DataFrame(historico)
+        df = pd.DataFrame(historico_rni)
         df['date'] = pd.to_datetime(df['date'])
         df['value'] = df['value'].astype(float)
         df = df.sort_values('date').reset_index(drop=True)
@@ -145,11 +148,12 @@ def calcular_ttr_rosendaal(historico, min_alvo, max_alvo):
         return 0.0
 
 def calcular_ttr_direto(historico, min_alvo, max_alvo):
-    if not historico:
+    historico_rni = [e for e in historico if e.get('value') is not None]
+    if not historico_rni:
         return 0.0, 0, 0
     try:
-        total = len(historico)
-        na_faixa = sum(1 for e in historico if min_alvo <= float(e['value']) <= max_alvo)
+        total = len(historico_rni)
+        na_faixa = sum(1 for e in historico_rni if min_alvo <= float(e['value']) <= max_alvo)
         return (na_faixa / total) * 100.0, na_faixa, total
     except Exception:
         return 0.0, 0, 0
@@ -275,7 +279,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
                 for pt in atencao:
                     min_a, max_a = map(float, pt.get('target', '2.0-3.0').split('-'))
                     ttr = calcular_ttr_rosendaal(pt.get('rniHistory', []), min_a, max_a)
-                    ult_rni = pt['rniHistory'][0]['value'] if pt.get('rniHistory') else "N/A"
+                    rni_validos = [e for e in pt.get('rniHistory', []) if e.get('value') is not None]
+                    ult_rni = rni_validos[0]['value'] if rni_validos else "N/A"
                     st.error(f"**{pt['name']}** — TTR: **{ttr:.1f}%** | Último RNI: **{ult_rni}**")
             else:
                 st.info("Nenhum paciente na zona crítica.")
@@ -378,26 +383,93 @@ else:
 
     st.markdown("---")
 
-    # GRÁFICO E REGISTRO RNI
+    # ==============================================================================
+    # GRÁFICO DE TENDÊNCIA EM ALTA QUALIDADE USANDO JSON CONFIGURAÇÃO NO PLOTLY
+    # ==============================================================================
     col_grafico, col_novo_rni = st.columns([2, 1])
     with col_grafico:
-        st.subheader("📈 Tendência Temporal do RNI (Plotly)")
-        if p.get('rniHistory'):
-            df_chart = pd.DataFrame(p['rniHistory'])
+        st.subheader("📈 Tendência Temporal do RNI (Alta Definção)")
+        
+        # Filtra histórico apenas para exames com RNI válido
+        historico_rni_validos = [e for e in p.get('rniHistory', []) if e.get('value') is not None]
+        
+        if historico_rni_validos:
+            df_chart = pd.DataFrame(historico_rni_validos)
             df_chart['date'] = pd.to_datetime(df_chart['date'])
             df_chart['value'] = df_chart['value'].astype(float)
             df_chart = df_chart.sort_values('date')
 
-            fig_rni = px.line(df_chart, x='date', y='value', markers=True, labels={'date': 'Data', 'value': 'RNI'})
-            fig_rni.add_hrect(y0=min_alvo, y1=max_alvo, fillcolor="green", opacity=0.15, line_width=0)
-            fig_rni.update_traces(line_color='#2563EB', line_width=3, marker_size=8)
-            fig_rni.update_layout(margin=dict(l=20, r=20, t=20, b=20), height=280)
-            st.plotly_chart(fig_rni, use_container_width=True)
+            fig_rni = px.line(
+                df_chart, 
+                x='date', 
+                y='value', 
+                markers=True, 
+                labels={'date': 'Data da Coleta', 'value': 'Resultado do RNI'}
+            )
+
+            # ESTILIZAÇÃO AVANÇADA VIA DICIONÁRIO / CONFIGURAÇÃO JSON
+            plotly_json_config = {
+                "layout": {
+                    "template": "plotly_white",
+                    "font": {"family": "Inter, sans-serif", "size": 12, "color": "#1E293B"},
+                    "margin": {"l": 40, "r": 20, "t": 30, "b": 40},
+                    "height": 300,
+                    "hovermode": "x unified",
+                    "xaxis": {
+                        "showgrid": True,
+                        "gridcolor": "#F1F5F9",
+                        "linecolor": "#CBD5E1",
+                        "ticks": "outside"
+                    },
+                    "yaxis": {
+                        "showgrid": True,
+                        "gridcolor": "#F1F5F9",
+                        "linecolor": "#CBD5E1",
+                        "zeroline": False,
+                        "range": [max(0.0, df_chart['value'].min() - 0.5), df_chart['value'].max() + 0.8]
+                    },
+                    "shapes": [
+                        # Faixa verde de Alvo Alvo RNI
+                        {
+                            "type": "rect",
+                            "xref": "paper",
+                            "yref": "y",
+                            "x0": 0,
+                            "x1": 1,
+                            "y0": min_alvo,
+                            "y1": max_alvo,
+                            "fillcolor": "rgba(16, 185, 129, 0.12)",
+                            "line": {"width": 0},
+                            "layer": "below"
+                        },
+                        # Linha Limite Inferior
+                        {
+                            "type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
+                            "y0": min_alvo, "y1": min_alvo,
+                            "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}
+                        },
+                        # Linha Limite Superior
+                        {
+                            "type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
+                            "y0": max_alvo, "y1": max_alvo,
+                            "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}
+                        }
+                    ]
+                }
+            }
+
+            fig_rni.update_traces(
+                line=dict(color='#2563EB', width=3, shape='linear'),
+                marker=dict(size=9, color='#1D4ED8', symbol='circle', line=dict(width=2, color='#FFFFFF'))
+            )
+            fig_rni.update_layout(plotly_json_config["layout"])
+
+            st.plotly_chart(fig_rni, use_container_width=True, config={'displayModeBar': False})
         else:
-            st.info("Nenhum histórico de RNI disponível.")
+            st.info("Nenhum histórico numérico de RNI registrado até o momento.")
 
     with col_novo_rni:
-        st.subheader("➕ Registrar Novo RNI")
+        st.subheader("➕ Registrar RNI")
         with st.form("form_novo_rni_avulso", clear_on_submit=True):
             data_avulsa = st.date_input("Data do Exame", value=datetime.today())
             rni_avulso = st.number_input("Valor de RNI", min_value=0.5, max_value=10.0, step=0.1, value=2.5)
@@ -419,7 +491,7 @@ else:
 
     # 1. ANAMNESE E GERADOR DE EVOLUÇÃO
     with tab_anamnese:
-        st.markdown("### 📋 Lançamento da Consulta Ambularorial")
+        st.markdown("### 📋 Lançamento da Consulta Ambulatorial")
         with st.form("form_anamnese_soap"):
             c_rni1, c_rni2 = st.columns(2)
             with c_rni1:
@@ -460,7 +532,8 @@ else:
                 
                 ttr_atual = calcular_ttr_rosendaal(p['rniHistory'], min_alvo, max_alvo)
                 ttr_dir, ex_f, tot_ex = calcular_ttr_direto(p['rniHistory'], min_alvo, max_alvo)
-                ult_rni_val = p['rniHistory'][0]['value'] if p['rniHistory'] else "N/A"
+                rni_validos = [e for e in p['rniHistory'] if e.get('value') is not None]
+                ult_rni_val = rni_validos[0]['value'] if rni_validos else "N/A"
                 
                 # NARRATIVA DIRETA E CONTINUA EM TEXTO CORRIDO
                 soap_texto = (
@@ -474,7 +547,7 @@ else:
                     f"O cálculo de controle de estabilidade indica Time in Therapeutic Range (TTR) pelo Método de Rosendaal de {ttr_atual:.1f}% e TTR Direto de {ttr_dir:.1f}% ({ex_f} de {tot_ex} exames na faixa). "
                     f"A dose semanal total prévia utilizada pelo paciente era de {p.get('weeklyDose', 0)} mg. "
                     f"Em avaliação farmacêutica clínica, o controle da anticoagulação é classificado como {status_ttr.upper()}, estando o RNI "
-                    f"{'adequado e dentro do intervalo alvo' if min_alvo <= float(ult_rni_val) <= max_alvo else 'fora da faixa ideal recomendada'}. "
+                    f"{'adequado e dentro do intervalo alvo' if (ult_rni_val != 'N/A' and min_alvo <= float(ult_rni_val) <= max_alvo) else 'fora da faixa ideal recomendada'}. "
                     f"Frente aos achados e perfil de segurança, adota-se como plano de conduta: {decisao_dose.lower()}, fixando a nova dose semanal ajustada em {nova_dose_semanal} mg. "
                     f"O paciente foi devidamente orientado quanto à correta distribuição diária da dose, reconhecimento de sinais de alarme para sangramentos ou trombose, e agendamento de retorno ambulatorial pactuado para {retorno_dias}. "
                     f"Atendimento finalizado e registrado por Farmacêutico Clínico."
@@ -504,26 +577,49 @@ else:
                 salvar_dados_json(st.session_state.dados)
                 st.success("Texto da evolução atualizado!")
 
-    # 3. HISTÓRICO, EDIÇÃO E EXCLUSÃO DE RNI
+    # 3. HISTÓRICO, EDIÇÃO E EXCLUSÃO DE RNI + OPÇÃO DE REGISTRO DE FALTA
     with tab_tabela:
-        st.subheader("📋 Histórico de Coletas - Edição e Exclusão")
+        st.subheader("📋 Histórico de Coletas - Edição e Gestão")
+        
+        # BOTÃO PARA REGISTRAR FALTA
+        with st.expander("🚨 Registrar Ausência / Paciente Faltou à Consulta", expanded=False):
+            with st.form("form_registra_falta"):
+                data_falta = st.date_input("Data da Consulta Não Comparecida:", value=datetime.today())
+                obs_falta = st.text_input("Observação da Falta:", value="Paciente faltou à consulta agendada. Sem justificativa prévia.")
+                if st.form_submit_button("Registrar Ausência"):
+                    p['rniHistory'].insert(0, {
+                        "date": data_falta.strftime("%Y-%m-%d"),
+                        "value": None,
+                        "status": "Falta",
+                        "obs": obs_falta
+                    })
+                    salvar_dados_json(st.session_state.dados)
+                    st.warning("Falta registrada no histórico!")
+                    st.rerun()
+
+        st.markdown("---")
+
         if p.get('rniHistory'):
             for idx, item in enumerate(p['rniHistory']):
-                c_data, c_val, c_edit, c_del = st.columns([2, 2, 1, 1])
+                c_data, c_val, c_edit, c_del = st.columns([2, 3, 1, 1])
                 with c_data:
                     st.write(f"📅 **{item['date']}**")
                 with c_val:
-                    st.write(f"🩸 **RNI: {item['value']}**")
+                    if item.get('status') == 'Falta' or item.get('value') is None:
+                        st.markdown(f"⚠️ <span style='color: #DC2626; font-weight: 600;'>PACIENTE FALTOU À CONSULTA</span><br><small style='color: #64748B;'>Obs: {item.get('obs', 'Sem registro')}</small>", unsafe_allow_html=True)
+                    else:
+                        st.write(f"🩸 **RNI: {item['value']}**")
                 with c_edit:
-                    with st.popover("✏️ Editar"):
-                        with st.form(f"form_edit_rni_{idx}"):
-                            nova_d = st.date_input("Data:", value=datetime.strptime(item['date'], "%Y-%m-%d"))
-                            novo_v = st.number_input("Valor RNI:", value=float(item['value']), step=0.1)
-                            if st.form_submit_button("Atualizar"):
-                                p['rniHistory'][idx] = {"date": nova_d.strftime("%Y-%m-%d"), "value": float(novo_v)}
-                                salvar_dados_json(st.session_state.dados)
-                                st.success("Atualizado!")
-                                st.rerun()
+                    if item.get('value') is not None:
+                        with st.popover("✏️ Editar"):
+                            with st.form(f"form_edit_rni_{idx}"):
+                                nova_d = st.date_input("Data:", value=datetime.strptime(item['date'], "%Y-%m-%d"))
+                                novo_v = st.number_input("Valor RNI:", value=float(item['value']), step=0.1)
+                                if st.form_submit_button("Atualizar"):
+                                    p['rniHistory'][idx] = {"date": nova_d.strftime("%Y-%m-%d"), "value": float(novo_v)}
+                                    salvar_dados_json(st.session_state.dados)
+                                    st.success("Atualizado!")
+                                    st.rerun()
                 with c_del:
                     if st.button("🗑️ Excluir", key=f"btn_del_rni_{idx}"):
                         p['rniHistory'].pop(idx)
@@ -532,7 +628,7 @@ else:
                         st.rerun()
                 st.markdown("<hr style='margin: 4px 0;'>", unsafe_allow_html=True)
         else:
-            st.info("Sem exames registrados.")
+            st.info("Sem exames ou ausências registradas.")
 
     # 4. MEDICAMENTOS EM CASA E ALERTAS DE INTERAÇÃO
     with tab_meds:
@@ -562,3 +658,19 @@ else:
                 """, unsafe_allow_html=True)
         else:
             st.success("✅ Nenhuma interação medicamentosa de alto risco identificada na lista atual.")
+
+    # ==============================================================================
+    # 8. ÁREA DE SEGURANÇA: EXCLUSÃO DEFINITIVA DO PACIENTE
+    # ==============================================================================
+    st.markdown("---")
+    with st.expander("⚙️ Opções Avançadas / Excluir Paciente do Serviço"):
+        st.warning("⚠️ **Atenção:** A exclusão do paciente removerá todos os registros de RNI, evoluções e histórico ambulatorial associados de forma irreversível.")
+        col_del_txt, col_del_btn = st.columns([3, 1])
+        with col_del_txt:
+            confirma_exclusao = st.checkbox(f"Estou ciente e desejo excluir o paciente {p['name']} do sistema.")
+        with col_del_btn:
+            if st.button("🗑️ Excluir Paciente", type="primary", disabled=not confirma_exclusao, use_container_width=True):
+                st.session_state.dados["patients"].pop(paciente_sel_index)
+                salvar_dados_json(st.session_state.dados)
+                st.success("Paciente excluído com sucesso!")
+                st.rerun()
