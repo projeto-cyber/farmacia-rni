@@ -146,7 +146,6 @@ def importar_projeto_json(conteudo_json):
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         
-        # Limpa as tabelas atuais para substituir pelos dados importados
         cursor.execute("DELETE FROM historico_rni")
         cursor.execute("DELETE FROM pacientes")
         
@@ -315,7 +314,6 @@ st.sidebar.markdown("---")
 with st.sidebar.expander("💾 Gestão de Dados do Projeto"):
     st.caption("Salve ou restaure todo o projeto (pacientes, histórico de RNI e evoluções).")
     
-    # 1. Exportar
     json_backup = exportar_projeto_json()
     nome_arq_backup = f"backup_ambulatorio_rni_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     
@@ -325,12 +323,11 @@ with st.sidebar.expander("💾 Gestão de Dados do Projeto"):
         file_name=nome_arq_backup,
         mime="application/json",
         use_container_width=True,
-        help="Baixa um arquivo com todos os dados atuais do sistema para guardar no seu computador/Documentos."
+        help="Baixa um arquivo com todos os dados atuais do sistema."
     )
     
     st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
     
-    # 2. Importar
     arquivo_upload = st.file_uploader("📤 Importar Backup do Projeto", type=["json"], help="Selecione um arquivo de backup previamente exportado.")
     if arquivo_upload is not None:
         if st.button("🔄 Restaurar Dados do Arquivo", use_container_width=True, type="primary"):
@@ -353,7 +350,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     pacientes_raw = conn.execute("SELECT * FROM pacientes").fetchall()
     
     if not pacientes_raw:
-        st.warning("Nenhum paciente cadastrado no banco de dados. Utilize a opção na barra lateral ou importe um projeto salvo.")
+        st.warning("Nenhum paciente cadastrado no banco de dados. Utilize a opção na barra lateral para cadastrar ou importar um backup.")
         conn.close()
         st.stop()
 
@@ -658,195 +655,118 @@ else:
             c1, c2 = st.columns(2)
             with c1:
                 st.markdown("**1. Segurança e Eventos Adversos**")
-                sinais_sangramento = st.radio("Sangramentos recentes:", ["Ausentes", "Leves (gengivorragia, pequenas equimoses)", "Moderados a Graves (epistaxe volumosa, hematúria, melena)"])
-                sinais_trombose = st.radio("Sintomas Tromboembólicos:", ["Ausentes", "Presentes (DNV, dor em MMII, assimetria, cefaleia)"])
-                st.markdown("**2. Aderência**")
-                esquecimento = st.radio("Relato de esquecimento:", ["Nenhum esquecimento (Aderência 100%)", "1 a 2 esquecimentos/mês", "Frequentes erros/esquecimentos"])
-
-            with c2:
-                st.markdown("**3. Fatores Interferentes e Dieta**")
-                alteracao_dieta = st.radio("Vitamina K / Álcool:", ["Manutenção do hábito alimentar usual", "Aumento no consumo de Vitamina K", "Redução expressiva de Vitamina K", "Uso recente de álcool"])
-                interacao_med = st.radio("Medicamentos Concomitantes:", ["Sem alterações de medicamentos", "Início de novo medicamento (Potencial Interação)", "Suspensão de medicamento contínuo"])
-                detalhe_interacao = st.text_input("Especifique novos medicamentos se houver:", placeholder="Ex: Azitromicina")
-
-            st.markdown("---")
-            c3, c4 = st.columns(2)
-            with c3:
-                decisao_dose = st.selectbox("Conduta Posológica:", ["Manter dose semanal atual", "Aumentar dose semanal total (5% a 15%)", "Reduzir dose semanal total (5% a 15%)", "Omitir 1 dose e ajustar dose semanal", "Alta por estabilidade do TTR"])
-                nova_dose_semanal = st.number_input("Nova Dose Semanal Total (mg):", value=float(p['weekly_dose']), step=2.5)
-            with c4:
-                retorno_dias = st.select_slider("Retorno Agendado:", options=["7 dias", "14 dias", "21 dias", "30 dias", "37 dias", "Alta Terapêutica"], value="30 dias")
-                obs_clinicas = st.text_area("Observações Adicionais:", placeholder="Orientações e detalhes adicionais...")
-
-            if st.form_submit_button("💾 Gerar Evolução Narrativa em Texto Corrido"):
-                data_hoje_str = datetime.now().strftime("%Y-%m-%d")
-                data_hoje_fmt = datetime.now().strftime("%d/%m/%Y às %H:%M")
+                sinais_sangramento = st.multiselect("Sinais de Sangramento Notados:", ["Nenhum", "Gengivorragia", "Epistaxe", "Equimoses/Hematomas", "Hematúria", "Melena/Hematoquezia", "Outros"])
+                esquecimento = st.selectbox("Omitiu ou esqueceu doses recentemente?", ["Não", "Sim (1 dose)", "Sim (2 ou mais doses)"])
+                mudanca_diet = st.selectbox("Alteração expressiva na dieta (folhas verdes/chás)?", ["Não", "Sim - Aumentou consumo", "Sim - Reduziu consumo"])
                 
+            with c2:
+                st.markdown("**2. Mudanças na Farmacoterapia e Conduta**")
+                novos_meds = st.text_input("Novos medicamentos iniciados por outros médicos:", value="Nenhum")
+                nova_dose_semanal = st.number_input("Nova Dose Semanal Proposta (mg):", value=float(p['weekly_dose']), step=2.5)
+                retorno_dias = st.selectbox("Aprazamento do Retorno:", ["7 dias", "14 dias", "21 dias", "30 dias", "60 dias", "90 dias"])
+                orientacoes_obs = st.text_area("Orientações Clínicas e Observações Adicionais:", placeholder="Escreva observações específicas para o plano de cuidado...")
+
+            if st.form_submit_button("Gerar e Salvar Evolução Farmacêutica"):
+                data_hoje_str = datetime.today().strftime("%Y-%m-%d")
+                
+                # Salva RNI caso checado
                 if registrar_rni_hoje:
                     conn.execute("""
                         INSERT INTO historico_rni (patient_id, date, value, status, obs)
                         VALUES (?, ?, ?, ?, ?)
-                    """, (p['id'], data_hoje_str, float(rni_hoje_valor), "Normal", ""))
+                    """, (p['id'], data_hoje_str, float(rni_hoje_valor), "Consulta", "Registrado via Anamnese"))
                     conn.commit()
+
+                # Atualiza dose no cadastro do paciente
+                conn.execute("UPDATE pacientes SET weekly_dose=? WHERE id=?", (nova_dose_semanal, p['id']))
+                conn.commit()
+
+                # Estrutura do Texto SOAP para Prontuário
+                sang_texto = ", ".join(sinais_sangramento) if sinais_sangramento else "Nenhum"
                 
-                rni_rows_updated = conn.execute("SELECT * FROM historico_rni WHERE patient_id = ? ORDER BY date DESC", (p['id'],)).fetchall()
-                historico_rni_up = [dict(r) for r in rni_rows_updated]
-                
-                ttr_atual = calcular_ttr_rosendaal(historico_rni_up, min_alvo, max_alvo)
-                ttr_dir, ex_f, tot_ex = calcular_ttr_direto(historico_rni_up, min_alvo, max_alvo)
-                rni_validos = [e for e in historico_rni_up if e.get('value') is not None]
-                ult_rni_val = rni_validos[0]['value'] if rni_validos else "N/A"
-                
-                interacoes_casa = checar_interacoes(p['meds'] or "")
-                texto_interacoes_casa = ""
-                if interacoes_casa:
-                    meds_alerta = [f"{item['medicamento']} ({item['efeito']})" for item in interacoes_casa]
-                    texto_interacoes_casa = (
-                        f" Em análise da farmacoterapia de uso domiciliário, identificou-se o uso de medicamento(s) com potencial de alterar o valor do RNI: "
-                        f"{'; '.join(meds_alerta)}. Foi reforçada a necessidade de monitorização e alinhada a conduta recomendada: "
-                        f"{'; '.join([item['conduta'] for item in interacoes_casa])}."
-                    )
-                
-                apoio_txt = "necessita de apoio/cuidador para tomada de medicamentos" if p['needs_support'] == "Sim" else "possui autonomia para tomada de medicamentos"
-                soap_texto = (
-                    f"Evolução Farmacêutica - Ambulatório de Anticoagulação Oral ({data_hoje_fmt}). "
-                    f"Paciente {p['name']}, {p['age']} anos ({'idoso' if p['age']>=60 else 'adulto'}), que {apoio_txt}, em acompanhamento ambulatorial para manejo de anticoagulação por {p['indication']}. "
-                    f"Ao interrogatório clínico, nega intercorrências graves, relatando em relação a sangramentos: {sinais_sangramento.lower()} e sobre sintomas tromboembólicos: {sinais_trombose.lower()}. "
-                    f"Quanto ao perfil de adesão farmacoterapêutica, refere {esquecimento.lower()}, associado a {alteracao_dieta.lower()} no padrão alimentar habitual. "
-                    f"Em relação à farmacoterapia concomitante, observa-se {interacao_med.lower()}{f' ({detalhe_interacao})' if detalhe_interacao else ''}.{texto_interacoes_casa} "
-                    f"{f'Informações complementares relatadas: {obs_clinicas}. ' if obs_clinicas else ''}"
-                    f"Ao exame objetivo e dados laboratoriais, aponta-se RNI atual de {ult_rni_val} para uma faixa alvo terapêutica estabelecida de {p['target']}. "
-                    f"O cálculo de controle de estabilidade indica Time in Therapeutic Range (TTR) pelo Método de Rosendaal de {ttr_atual:.1f}% e TTR Direto de {ttr_dir:.1f}% ({ex_f} de {tot_ex} exames na faixa). "
-                    f"A dose semanal total prévia utilizada pelo paciente era de {p['weekly_dose']} mg. "
-                    f"Em avaliação farmacêutica clínica, o controle da anticoagulação é classificado como {status_ttr.upper()}, estando o RNI "
-                    f"{'adequado e dentro do intervalo alvo' if (ult_rni_val != 'N/A' and min_alvo <= float(ult_rni_val) <= max_alvo) else 'fora da faixa ideal recomendada'}. "
-                    f"Frente aos achados e perfil de segurança, adota-se como plano de conduta: {decisao_dose.lower()}, fixando a nova dose semanal ajustada em {nova_dose_semanal} mg. "
-                    f"O paciente foi devidamente orientado quanto à correta distribuição diária da dose, reconhecimento de sinais de alarme para sangramentos ou trombose, e agendamento de retorno ambulatorial pactuado para {retorno_dias}. "
-                    f"Atendimento finalizado e registrado por Farmacêutico Clínico."
-                )
-                
-                novo_st = 'Alta' if (decisao_dose == "Alta por estabilidade do TTR" or retorno_dias == "Alta Terapêutica") else p['status']
-                
-                conn.execute("""
-                    UPDATE pacientes SET evolution=?, weekly_dose=?, status=? WHERE id=?
-                """, (soap_texto, nova_dose_semanal, novo_st, p['id']))
+                texto_soap = f"""[EVOLUÇÃO FARMA CÊUTICA - AMBULATÓRIO DE ANTICOAGULAÇÃO]
+Data: {datetime.today().strftime('%d/%m/%Y')}
+
+S (SUBJETIVO):
+- Adesão/Esquecimento: {esquecimento}
+- Sinais de Sangramento Relatados: {sang_texto}
+- Alterações Diéticas Recentes: {mudanca_diet}
+- Introdução de Novos Medicamentos: {novos_meds}
+
+O (OBJETIVO):
+- Paciente em uso de Varfarina para {p['indication']}. Faixa Alvo RNI: {p['target']}.
+- Dose Semanal Anterior: {p['weekly_dose']} mg.
+- RNI Atual ({data_hoje_str}): {rni_hoje_valor if registrar_rni_hoje else 'Não informado/Coletado em outro serviço'}.
+- TTR Acumulado (Rosendaal): {ttr_valor:.1f}%.
+
+A (AVALIAÇÃO):
+- Controle do RNI: {'Adequado/Na faixa alvo' if min_alvo <= (rni_hoje_valor if registrar_rni_hoje else 2.5) <= max_alvo else 'Fora do Alvo Terapêutico'}.
+- Análise de Riscos: Interações e sinais de segurança avaliados na consulta.
+
+P (PLANO / CONDUTA):
+- Nova Dose Semanal Ajustada/Mantida: {nova_dose_semanal} mg/semana.
+- Orientações de Adesão e Sinais de Alerta Reforçados com o Paciente/Cuidador.
+- Observações: {orientacoes_obs if orientacoes_obs else 'Sem observações adicionais.'}
+- Retorno Agendado: Em {retorno_dias}.
+"""
+                conn.execute("UPDATE pacientes SET evolution=? WHERE id=?", (texto_soap, p['id']))
                 conn.commit()
                 conn.close()
-                st.success("Evolução gerada com sucesso!")
+                st.success("Evolução gerada e armazenada no histórico!")
                 st.rerun()
 
-    # 2. HISTÓRICO DE COLETAS
+    # 2. TABELA DE HISTÓRICO DE RNI
     with tab_tabela:
-        st.subheader("📋 Histórico de Coletas - Edição e Gestão")
-        
-        with st.expander("🚨 Registrar Ausência / Paciente Faltou à Consulta", expanded=False):
-            with st.form("form_registra_falta"):
-                data_falta = st.date_input("Data da Consulta Não Comparecida:", value=datetime.today())
-                obs_falta = st.text_input("Observação da Falta:", value="Paciente faltou à consulta agendada. Sem justificativa prévia.")
-                if st.form_submit_button("Registrar Ausência"):
-                    conn.execute("""
-                        INSERT INTO historico_rni (patient_id, date, value, status, obs)
-                        VALUES (?, ?, NULL, ?, ?)
-                    """, (p['id'], data_falta.strftime("%Y-%m-%d"), "Falta", obs_falta))
+        st.markdown("### 📋 Histórico Registrado de Exames de RNI")
+        if historico_rni:
+            df_tab = pd.DataFrame(historico_rni)
+            st.dataframe(df_tab[['id', 'date', 'value', 'status', 'obs']], use_container_width=True)
+            
+            with st.expander("🗑️ Excluir Registro de RNI"):
+                id_excluir = st.number_input("Digite o ID do exame a remover:", min_value=1, step=1)
+                if st.button("Confirmar Exclusão"):
+                    conn.execute("DELETE FROM historico_rni WHERE id=? AND patient_id=?", (id_excluir, p['id']))
                     conn.commit()
                     conn.close()
-                    st.warning("Falta registrada no histórico!")
+                    st.success("Exame excluído com sucesso.")
                     st.rerun()
-
-        st.markdown("---")
-
-        if historico_rni:
-            for item in historico_rni:
-                c_data, c_val, c_edit, c_del = st.columns([2, 3, 1, 1])
-                with c_data:
-                    st.write(f"📅 **{item['date']}**")
-                with c_val:
-                    if item['status'] == 'Falta' or item['value'] is None:
-                        st.markdown(f"⚠️ <span style='color: #DC2626; font-weight: 600;'>PACIENTE FALTOU À CONSULTA</span><br><small style='color: #64748B;'>Obs: {item['obs'] or 'Sem registro'}</small>", unsafe_allow_html=True)
-                    else:
-                        st.write(f"🩸 **RNI: {item['value']}**")
-                with c_edit:
-                    if item['value'] is not None:
-                        with st.popover("✏️ Editar"):
-                            with st.form(f"form_edit_rni_{item['id']}"):
-                                nova_d = st.date_input("Data:", value=datetime.strptime(item['date'], "%Y-%m-%d"))
-                                novo_v = st.number_input("Valor RNI:", value=float(item['value']), step=0.1)
-                                if st.form_submit_button("Atualizar"):
-                                    conn.execute("UPDATE historico_rni SET date=?, value=? WHERE id=?", (nova_d.strftime("%Y-%m-%d"), float(novo_v), item['id']))
-                                    conn.commit()
-                                    conn.close()
-                                    st.success("Atualizado!")
-                                    st.rerun()
-                with c_del:
-                    if st.button("🗑️ Excluir", key=f"btn_del_rni_{item['id']}"):
-                        conn.execute("DELETE FROM historico_rni WHERE id=?", (item['id'],))
-                        conn.commit()
-                        conn.close()
-                        st.success("Registro removido!")
-                        st.rerun()
-                st.markdown("<hr style='margin: 4px 0;'>", unsafe_allow_html=True)
         else:
-            st.info("Sem exames ou ausências registradas.")
+            st.info("Nenhum histórico cadastrado para este paciente.")
 
     # 3. MEDICAMENTOS EM CASA E ALERTAS
     with tab_meds:
-        st.subheader("💊 Medicamentos de Uso Domiciliar e Alertas Clínicos")
-        st.caption("Cadastre os medicamentos de uso contínuo. Separe os nomes por vírgula para possibilitar a contagem de Polifarmácia e detecção automática de interações.")
+        st.markdown("### 💊 Lista de Medicamentos & Interações com Varfarina")
         
-        with st.form("form_edit_meds"):
-            meds_texto = st.text_area("Relação de Medicamentos em Uso em Casa:", value=p['meds'] or '', height=120, placeholder="Ex: Amiodarona 200mg, Omeprazol 20mg, Losartana 50mg, Paracetamol 750mg...")
-            if st.form_submit_button("💾 Salvar Relação de Medicamentos"):
-                conn.execute("UPDATE pacientes SET meds=? WHERE id=?", (meds_texto, p['id']))
+        with st.form("form_update_meds"):
+            novos_meds_texto = st.text_area("Editar Lista de Medicamentos (separados por vírgula ou linha):", value=p['meds'] or "", height=120)
+            if st.form_submit_button("Atualizar Lista de Medicamentos"):
+                conn.execute("UPDATE pacientes SET meds=? WHERE id=?", (novos_meds_texto, p['id']))
                 conn.commit()
                 conn.close()
-                st.success("Medicamentos atualizados!")
+                st.success("Lista de medicamentos atualizada!")
                 st.rerun()
 
-        st.markdown("---")
-        st.markdown("### ⚠️ Rastreio Automático de Interações com a Varfarina")
-        
-        interacoes = checar_interacoes(p['meds'] or '')
-        if interacoes:
-            for inter in interacoes:
-                classe_card = "alert-high" if inter['risco'] == "Alta" else "alert-mod"
+        interacoes_detectadas = checar_interacoes(p['meds'])
+        if interacoes_detectadas:
+            st.markdown("#### ⚠️ Interações Relevantes Identificadas")
+            for inter in interacoes_detectadas:
+                classe_alert = "alert-high" if inter['risco'] == "Alta" else "alert-mod"
                 st.markdown(f"""
-                <div class="alert-card {classe_card}">
-                    <div style="font-size: 1rem; font-weight: 700;">🚨 {inter['medicamento']} — Risco de Interação {inter['risco'].upper()}</div>
-                    <div style="margin-top: 4px; font-size: 0.9rem;"><b>Efeito no RNI / Clínico:</b> {inter['efeito']}</div>
-                    <div style="margin-top: 2px; font-size: 0.9rem;"><b>Recomendação / Conduta:</b> {inter['conduta']}</div>
+                <div class="alert-card {classe_alert}">
+                    <b>Fármaco:</b> {inter['medicamento']} (Risco: {inter['risco']})<br>
+                    <b>Efeito Terapêutico:</b> {inter['efeito']}<br>
+                    <b>Conduta Clínica Recomendada:</b> {inter['conduta']}
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.success("✅ Nenhuma interação medicamentosa de alto risco identificada na lista atual.")
+            st.success("Nenhuma interação clássica de alto risco detectada na lista informada.")
 
-    # 4. EVOLUÇÃO FARMACÊUTICA (MV PEP)
+    # 4. EVOLUÇÃO FARMA CÊUTICA (PRONTUÁRIO)
     with tab_evolucao:
-        st.subheader("📝 Evolução Farmacêutica Narrativa (Padrão MV PEP)")
-        st.caption("Você pode editar o texto abaixo diretamente para acrescentar dados antes de copiar para o prontuário eletrônico.")
-        
-        texto_evol_atual = p['evolution'] or ''
-        novo_texto_editado = st.text_area("Texto Corrido Editável:", value=texto_evol_atual, height=350)
-        
-        if st.button("💾 Salvar Alterações no Texto"):
-            conn.execute("UPDATE pacientes SET evolution=? WHERE id=?", (novo_texto_editado, p['id']))
-            conn.commit()
-            conn.close()
-            st.success("Texto da evolução atualizado!")
-
-        # EXCLUSÃO DO PACIENTE
-        st.markdown("<br><br><hr>", unsafe_allow_html=True)
-        st.markdown("### ⚙️ Gestão do Paciente")
-        with st.expander("🚨 Excluir Paciente do Serviço de Farmácia Clínica", expanded=False):
-            st.warning("⚠️ **Atenção:** A exclusão do paciente removerá todos os registros de RNI, evoluções e histórico ambulatorial de forma irreversível.")
-            col_del_txt, col_del_btn = st.columns([3, 1])
-            with col_del_txt:
-                confirma_exclusao = st.checkbox(f"Estou ciente e desejo excluir o paciente {p['name']} definitivamente.")
-            with col_del_btn:
-                if st.button("🗑️ Excluir Paciente", type="primary", disabled=not confirma_exclusao, use_container_width=True):
-                    conn.execute("DELETE FROM pacientes WHERE id=?", (p['id'],))
-                    conn.commit()
-                    conn.close()
-                    st.success("Paciente excluído com sucesso!")
-                    st.rerun()
+        st.markdown("### 📝 Registro de Evolução (Copiar para MV PEP)")
+        if p['evolution']:
+            st.text_area("Texto da Última Consulta:", value=p['evolution'], height=350)
+        else:
+            st.info("Nenhuma evolução registrada recentemente. Preencha a aba 'Roteiro de Decisão & Consulta' para gerar o texto do prontuário.")
 
     conn.close()
