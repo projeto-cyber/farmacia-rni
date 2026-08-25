@@ -5,10 +5,7 @@ import plotly.graph_objects as go
 import sqlite3
 import json
 import os
-from datetime import datetime, timedelta
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-import tempfile
+from datetime import datetime
 
 # ==============================================================================
 # 1. CONFIGURAÇÃO DA PÁGINA E ESTILIZAÇÃO CSS
@@ -84,10 +81,6 @@ st.markdown("""
 # ==============================================================================
 DB_NAME = "ambulatorio_rni.db"
 
-class DatabaseError(Exception):
-    """Erro personalizado para operações de banco de dados"""
-    pass
-
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
@@ -129,30 +122,6 @@ def get_db_connection():
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
-
-def executar_query_segura(query, params=None):
-    """Executa query com tratamento de erro e rollback"""
-    conn = get_db_connection()
-    try:
-        if params:
-            cursor = conn.execute(query, params)
-        else:
-            cursor = conn.execute(query)
-        conn.commit()
-        return cursor
-    except sqlite3.Error as e:
-        conn.rollback()
-        raise DatabaseError(f"Erro no banco de dados: {str(e)}")
-    finally:
-        conn.close()
-
-@st.cache_data(ttl=60)
-def carregar_pacientes():
-    """Carrega pacientes com cache para melhor performance"""
-    conn = get_db_connection()
-    pacientes = conn.execute("SELECT * FROM pacientes").fetchall()
-    conn.close()
-    return [dict(p) for p in pacientes]
 
 # ==============================================================================
 # 3. FUNÇÕES DE EXPORTAR E IMPORTAR PROJETO (BACKUP / RESTORE)
@@ -309,132 +278,7 @@ def obter_status_paciente(p, historico):
         return 'Precisa de Atenção'
 
 # ==============================================================================
-# 6. FUNÇÕES DE SUGESTÃO DE DOSE E ALERTAS
-# ==============================================================================
-def sugerir_ajuste_dose(rni_atual, dose_atual, min_alvo, max_alvo):
-    """
-    Sugere ajuste de dose baseado no RNI atual
-    Baseado nas diretrizes do ACCP (American College of Chest Physicians)
-    """
-    if rni_atual < 1.5:
-        return {
-            "acao": "Aumentar dose em 10-15%",
-            "nova_dose": dose_atual * 1.15,
-            "dose_extra": "Considerar dose de reforço",
-            "retorno": "7 dias"
-        }
-    elif 1.5 <= rni_atual < min_alvo:
-        return {
-            "acao": "Aumentar dose em 5-10%",
-            "nova_dose": dose_atual * 1.10,
-            "dose_extra": None,
-            "retorno": "14 dias"
-        }
-    elif min_alvo <= rni_atual <= max_alvo:
-        return {
-            "acao": "Manter dose atual",
-            "nova_dose": dose_atual,
-            "dose_extra": None,
-            "retorno": "30 dias"
-        }
-    elif max_alvo < rni_atual <= 4.5:
-        return {
-            "acao": "Reduzir dose em 5-10%",
-            "nova_dose": dose_atual * 0.90,
-            "dose_extra": None,
-            "retorno": "14 dias"
-        }
-    elif 4.5 < rni_atual <= 5.0:
-        return {
-            "acao": "Omitir 1 dose e reduzir 10%",
-            "nova_dose": dose_atual * 0.90,
-            "dose_extra": "Omitir próxima dose",
-            "retorno": "7 dias"
-        }
-    else:  # RNI > 5.0
-        return {
-            "acao": "URGENTE - Avaliar suspensão temporária",
-            "nova_dose": None,
-            "dose_extra": "Contatar médico imediatamente",
-            "retorno": "Imediato"
-        }
-
-def verificar_alertas_paciente(p, historico, min_alvo, max_alvo):
-    """
-    Verifica e retorna alertas importantes para o paciente
-    """
-    alertas = []
-    
-    # Verificar último RNI
-    if historico and historico[0].get('value'):
-        ultimo_rni = float(historico[0]['value'])
-        
-        if ultimo_rni > 5.0:
-            alertas.append({
-                "tipo": "critico",
-                "mensagem": f"RNI CRÍTICO: {ultimo_rni} - Contatar médico imediatamente"
-            })
-        elif ultimo_rni > max_alvo + 1:
-            alertas.append({
-                "tipo": "alto",
-                "mensagem": f"RNI elevado: {ultimo_rni} - Avaliar redução de dose"
-            })
-        elif ultimo_rni < min_alvo - 0.5:
-            alertas.append({
-                "tipo": "moderado",
-                "mensagem": f"RNI abaixo do alvo: {ultimo_rni} - Risco de trombose"
-            })
-    
-    # Verificar tempo desde última consulta
-    if historico:
-        ultima_data = datetime.strptime(historico[0]['date'], "%Y-%m-%d")
-        dias_desde_ultima = (datetime.now() - ultima_data).days
-        if dias_desde_ultima > 45:
-            alertas.append({
-                "tipo": "moderado",
-                "mensagem": f"Paciente sem acompanhamento há {dias_desde_ultima} dias"
-            })
-    
-    return alertas
-
-# ==============================================================================
-# 7. FUNÇÃO PARA GERAR RELATÓRIO PDF
-# ==============================================================================
-def gerar_relatorio_pdf(paciente, historico, ttr):
-    """
-    Gera relatório PDF do paciente para impressão
-    """
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
-        c = canvas.Canvas(tmp.name, pagesize=letter)
-        width, height = letter
-        
-        # Cabeçalho
-        c.setFont("Helvetica-Bold", 16)
-        c.drawString(50, height - 50, f"Relatório de Acompanhamento - {paciente['name']}")
-        
-        # Dados do paciente
-        c.setFont("Helvetica", 12)
-        c.drawString(50, height - 80, f"Idade: {paciente['age']} anos")
-        c.drawString(50, height - 100, f"Indicação: {paciente['indication']}")
-        c.drawString(50, height - 120, f"Faixa Alvo: {paciente['target']}")
-        c.drawString(50, height - 140, f"TTR: {ttr:.1f}%")
-        c.drawString(50, height - 160, f"Dose Semanal: {paciente['weekly_dose']} mg")
-        
-        # Histórico
-        c.drawString(50, height - 200, "Histórico de RNI:")
-        y_pos = height - 220
-        for item in historico[:10]:  # últimos 10 exames
-            if item.get('value'):
-                c.drawString(70, y_pos, f"{item['date']}: RNI = {item['value']}")
-            else:
-                c.drawString(70, y_pos, f"{item['date']}: FALTA")
-            y_pos -= 20
-        
-        c.save()
-        return tmp.name
-
-# ==============================================================================
-# 8. SIDEBAR, NAVEGAÇÃO E EXPORTAR/IMPORTAR PROJETO
+# 6. SIDEBAR, NAVEGAÇÃO E EXPORTAR/IMPORTAR PROJETO
 # ==============================================================================
 st.sidebar.markdown("### 🩺 Ambulatório RNI")
 
@@ -499,7 +343,7 @@ with st.sidebar.expander("💾 Gestão de Dados do Projeto"):
                 st.error(msg)
 
 # ==============================================================================
-# 9. MODO 1: DASHBOARD POPULACIONAL
+# 7. MODO 1: DASHBOARD POPULACIONAL
 # ==============================================================================
 if modo_visao == "🏠 Visão Geral (Dashboard)":
     st.title("📊 Painel Geral do Ambulatório de Anticoagulação")
@@ -566,7 +410,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             hole=0.4
         )
         fig_pie.update_traces(textinfo='percent+label')
-        fig_pie.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20), height=350)
+        fig_pie.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20), height=300)
         st.plotly_chart(fig_pie, use_container_width=True)
 
     with c_g2:
@@ -577,19 +421,20 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
                 df_inter, x='Pacientes', y='Medicamento', orientation='h',
                 color_discrete_sequence=['#EF4444'], text='Pacientes'
             )
-            fig_bar_inter.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=350, yaxis_title=None, xaxis_title="Número de Pacientes em Uso")
+            fig_bar_inter.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=300, yaxis_title=None, xaxis_title="Número de Pacientes em Uso")
             st.plotly_chart(fig_bar_inter, use_container_width=True)
         else:
             st.info("Nenhum medicamento interagente registrado nos cadastros atuais.")
 
+    # GRÁFICOS - LINHA 2 (NOVOS GRÁFICOS SOLICITADOS)
     st.markdown("---")
-
-    # GRÁFICOS - LINHA 2 (FAIXAS ETÁRIAS)
-    st.subheader("👥 Distribuição por Faixa Etária")
+    st.subheader("👥 Distribuição Demográfica e Polifarmácia")
+    
     c_g3, c_g4 = st.columns(2)
     
     with c_g3:
-        # Gráfico de faixas etárias detalhado
+        # Gráfico de faixas etárias
+        st.markdown("### 📊 Pacientes por Faixa Etária")
         faixa_adultos = sum(1 for p in lista_pacientes if p['age'] < 60)
         faixa_idosos = sum(1 for p in lista_pacientes if 60 <= p['age'] < 80)
         faixa_muito_idosos = sum(1 for p in lista_pacientes if p['age'] >= 80)
@@ -605,35 +450,20 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             y="Pacientes", 
             color="Faixa Etária", 
             text="Pacientes",
-            color_discrete_sequence=['#3B82F6', '#F59E0B', '#8B5CF6'],
-            title="Distribuição por Faixa Etária"
+            color_discrete_sequence=['#3B82F6', '#F59E0B', '#8B5CF6']
         )
-        fig_idade.update_layout(showlegend=False, margin=dict(t=40, b=20, l=20, r=20), height=350)
+        fig_idade.update_layout(
+            showlegend=False, 
+            margin=dict(t=20, b=20, l=20, r=20), 
+            height=300,
+            yaxis_title="Número de Pacientes",
+            xaxis_title=""
+        )
         st.plotly_chart(fig_idade, use_container_width=True)
 
     with c_g4:
-        # Gráfico de pizza para faixas etárias
-        fig_idade_pie = px.pie(
-            df_idade, 
-            names='Faixa Etária', 
-            values='Pacientes',
-            color='Faixa Etária',
-            color_discrete_sequence=['#3B82F6', '#F59E0B', '#8B5CF6'],
-            hole=0.4,
-            title="Proporção por Faixa Etária"
-        )
-        fig_idade_pie.update_traces(textinfo='percent+label')
-        fig_idade_pie.update_layout(showlegend=False, margin=dict(t=40, b=20, l=20, r=20), height=350)
-        st.plotly_chart(fig_idade_pie, use_container_width=True)
-
-    st.markdown("---")
-
-    # GRÁFICOS - LINHA 3 (POLIFARMÁCIA E INTERAÇÕES)
-    st.subheader("💊 Polifarmácia e Interações Medicamentosas")
-    c_g5, c_g6 = st.columns(2)
-    
-    with c_g5:
-        # Gráfico de polifarmácia
+        # Gráfico de pizza para polifarmácia
+        st.markdown("### 💊 Polifarmácia (≥ 5 medicamentos)")
         nao_polimedicados = total_pacientes - polimedicados
         df_poli = pd.DataFrame({
             "Categoria": ["Polimedicados (≥5 meds)", "Não Polimedicados (<5 meds)"],
@@ -646,13 +476,131 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             values='Pacientes',
             color='Categoria',
             color_discrete_sequence=['#EF4444', '#10B981'],
-            hole=0.4,
-            title="Distribuição de Polifarmácia"
+            hole=0.4
         )
         fig_poli.update_traces(textinfo='percent+label')
-        fig_poli.update_layout(showlegend=False, margin=dict(t=40, b=20, l=20, r=20), height=350)
+        fig_poli.update_layout(
+            showlegend=False, 
+            margin=dict(t=20, b=20, l=20, r=20), 
+            height=300
+        )
         st.plotly_chart(fig_poli, use_container_width=True)
 
+    # GRÁFICOS - LINHA 3 (MEDICAMENTOS INTERAGENTES)
+    st.markdown("---")
+    st.subheader("💊 Medicamentos que Interagem com a Varfarina")
+    
+    c_g5, c_g6 = st.columns(2)
+    
+    with c_g5:
+        # Gráfico de barras para medicamentos interagentes
+        if interagentes_dict:
+            df_inter_detailed = pd.DataFrame(list(interagentes_dict.items()), columns=['Medicamento', 'Pacientes']).sort_values('Pacientes', ascending=False)
+            fig_inter_detailed = px.bar(
+                df_inter_detailed,
+                x='Medicamento',
+                y='Pacientes',
+                color='Medicamento',
+                text='Pacientes',
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            fig_inter_detailed.update_layout(
+                showlegend=False,
+                margin=dict(t=20, b=20, l=20, r=20),
+                height=300,
+                yaxis_title="Número de Pacientes",
+                xaxis_title=""
+            )
+            st.plotly_chart(fig_inter_detailed, use_container_width=True)
+        else:
+            st.info("Nenhum medicamento interagente registrado.")
+
     with c_g6:
-        # Gráfico de pacientes com interações medicamentosas
-        pacientes_com_interacao
+        # Estatísticas de interações
+        st.markdown("### 📈 Resumo de Interações")
+        total_interacoes = sum(interagentes_dict.values())
+        pacientes_com_interacao = sum(1 for p in lista_pacientes if checar_interacoes(p['meds'] or ""))
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Total de Interações", total_interacoes)
+        with col2:
+            st.metric("Pacientes com Interação", pacientes_com_interacao)
+        
+        if interagentes_dict:
+            st.markdown("#### Medicamentos mais comuns:")
+            df_top_inter = pd.DataFrame(list(interagentes_dict.items()), columns=['Medicamento', 'Pacientes']).sort_values('Pacientes', ascending=False).head(5)
+            st.dataframe(df_top_inter, use_container_width=True, hide_index=True)
+
+# ==============================================================================
+# 8. MODO 2: FICHA DO PACIENTE
+# ==============================================================================
+else:
+    conn = get_db_connection()
+    pacientes_raw = conn.execute("SELECT * FROM pacientes ORDER BY status ASC, name ASC").fetchall()
+    
+    if not pacientes_raw:
+        st.warning("Cadastre um paciente na barra lateral ou importe os dados do projeto.")
+        conn.close()
+        st.stop()
+
+    lista_pacientes = [dict(p) for p in pacientes_raw]
+    opcoes_pacientes = [f"⚪ {pt['name']} (ALTA)" if pt['status'] == 'Alta' else f"🟢 {pt['name']}" for pt in lista_pacientes]
+    
+    paciente_sel_index = st.sidebar.radio("Selecione o paciente:", range(len(opcoes_pacientes)), format_func=lambda i: opcoes_pacientes[i])
+    p = lista_pacientes[paciente_sel_index]
+    
+    rni_rows = conn.execute("SELECT * FROM historico_rni WHERE patient_id = ? ORDER BY date DESC", (p['id'],)).fetchall()
+    historico_rni = [dict(r) for r in rni_rows]
+    
+    em_alta = (p['status'] == 'Alta')
+
+    # CABEÇALHO E EDIÇÃO DOS DADOS
+    col_titulo, col_edit_btn, col_status_btn = st.columns([3, 1, 1])
+    with col_titulo:
+        st.markdown(f"# {'<span style=\"color: #94A3B8;\">👤 ' + p['name'] + ' (Alta Terapêutica)</span>' if em_alta else '👤 ' + p['name']}", unsafe_allow_html=True)
+
+    with col_edit_btn:
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.popover("✏️ Editar Paciente", use_container_width=True):
+            st.markdown("### Alterar Dados do Paciente")
+            with st.form("form_edit_paciente"):
+                edit_nome = st.text_input("Nome:", value=p['name'])
+                edit_idade = st.number_input("Idade:", value=int(p['age']))
+                edit_contato = st.text_input("Contato:", value=p['contact'])
+                edit_indicacao = st.selectbox("Indicação:", ["Fibrilação Atrial", "TVP/EP", "Prótese Valvar Metálica", "Outra"], index=["Fibrilação Atrial", "TVP/EP", "Prótese Valvar Metálica", "Outra"].index(p['indication']) if p['indication'] in ["Fibrilação Atrial", "TVP/EP", "Prótese Valvar Metálica", "Outra"] else 0)
+                edit_target = st.selectbox("Faixa Alvo:", ["2.0-3.0", "2.5-3.5", "1.5-2.0"], index=["2.0-3.0", "2.5-3.5", "1.5-2.0"].index(p['target']))
+                edit_level = st.selectbox("Complexidade:", ["Baixo", "Médio", "Alto"], index=["Baixo", "Médio", "Alto"].index(p['level']))
+                edit_dose = st.number_input("Dose Semanal Total (mg):", value=float(p['weekly_dose']), step=2.5)
+                edit_apoio = st.selectbox("Necessita de Apoio/Cuidador?", ["Não", "Sim"], index=0 if p['needs_support'] == "Não" else 1)
+                
+                if st.form_submit_button("Atualizar Cadastro"):
+                    conn.execute("""
+                        UPDATE pacientes SET name=?, age=?, contact=?, indication=?, target=?, level=?, weekly_dose=?, needs_support=?
+                        WHERE id=?
+                    """, (edit_nome, edit_idade, edit_contato, edit_indicacao, edit_target, edit_level, edit_dose, edit_apoio, p['id']))
+                    conn.commit()
+                    conn.close()
+                    st.success("Dados atualizados!")
+                    st.rerun()
+
+    with col_status_btn:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Alternar Status", use_container_width=True):
+            novo_st = 'Ativo' if em_alta else 'Alta'
+            conn.execute("UPDATE pacientes SET status=? WHERE id=?", (novo_st, p['id']))
+            conn.commit()
+            conn.close()
+            st.rerun()
+
+    # CARTÕES DE INFORMAÇÕES
+    col_info1, col_info2, col_info3 = st.columns([2, 2, 2])
+    try:
+        min_alvo, max_alvo = map(float, p['target'].split('-'))
+    except Exception:
+        min_alvo, max_alvo = 2.0, 3.0
+
+    ttr_valor = calcular_ttr_rosendaal(historico_rni, min_alvo, max_alvo)
+    ttr_direto, exames_na_faixa, total_exames = calcular_ttr_direto(historico_rni, min_alvo, max_alvo)
+
+    cor_ttr, bg_badge, status_ttr = ("#64748B", "#F1F5F9", "Alta") if em_alta else (("#10B981", "#ECFDF5", "Estável") if ttr_valor >= 70.0 else (("#F59E0B", "#FFFBEB", "Alerta") if ttr_valor >= 60.0 else ("#
