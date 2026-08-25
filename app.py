@@ -444,14 +444,49 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         st.plotly_chart(fig_idade, use_container_width=True)
 
     with c_g4:
-        st.subheader("💊 Polifarmácia e Necessidade de Apoio")
-        df_poli = pd.DataFrame({
-            "Indicador": ["Polimedicados (≥5 meds)", "Uso de 1 a 4 meds", "Necessitam de Cuidador/Apoio"],
-            "Quantidade": [polimedicados, total_pacientes - polimedicados, com_apoio]
+        st.subheader("💊 Distribuição por Quantidade de Medicamentos")
+        
+        # Contar pacientes por quantidade de medicamentos
+        pacientes_1_med = 0
+        pacientes_2_meds = 0
+        pacientes_3_meds = 0
+        pacientes_4_meds = 0
+        pacientes_5_ou_mais = 0
+        
+        for p in lista_pacientes:
+            qtd_meds_paciente = contar_medicamentos(p['meds'] or "")
+            if qtd_meds_paciente == 1:
+                pacientes_1_med += 1
+            elif qtd_meds_paciente == 2:
+                pacientes_2_meds += 1
+            elif qtd_meds_paciente == 3:
+                pacientes_3_meds += 1
+            elif qtd_meds_paciente == 4:
+                pacientes_4_meds += 1
+            elif qtd_meds_paciente >= 5:
+                pacientes_5_ou_mais += 1
+        
+        df_distribuicao_meds = pd.DataFrame({
+            "Quantidade de Medicamentos": ["1 medicamento", "2 medicamentos", "3 medicamentos", "4 medicamentos", "5 ou mais medicamentos"],
+            "Pacientes": [pacientes_1_med, pacientes_2_meds, pacientes_3_meds, pacientes_4_meds, pacientes_5_ou_mais]
         })
-        fig_poli = px.bar(df_poli, x="Indicador", y="Quantidade", color="Indicador", text="Quantidade", color_discrete_sequence=['#EC4899', '#10B981', '#6366F1'])
-        fig_poli.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20), height=300)
-        st.plotly_chart(fig_poli, use_container_width=True)
+        
+        fig_distribuicao_meds = px.bar(
+            df_distribuicao_meds, 
+            x="Quantidade de Medicamentos", 
+            y="Pacientes", 
+            color="Quantidade de Medicamentos", 
+            text="Pacientes",
+            color_discrete_sequence=['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#EF4444']
+        )
+        fig_distribuicao_meds.update_layout(
+            showlegend=False, 
+            margin=dict(t=20, b=20, l=20, r=20), 
+            height=300,
+            yaxis_title="Número de Pacientes",
+            xaxis_title=""
+        )
+        st.plotly_chart(fig_distribuicao_meds, use_container_width=True)
 
 # ==============================================================================
 # 8. MODO 2: FICHA DO PACIENTE
