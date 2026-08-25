@@ -393,7 +393,15 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     m2.metric("Idosos (≥ 60 anos)", f"{idosos} ({idosos/total_pacientes*100:.0f}%)")
     m3.metric("Very Elderly (≥ 80 anos)", f"{idosos_mais_velhos} ({idosos_mais_velhos/total_pacientes*100:.0f}%)")
     m4.metric("Polimedicados (≥ 5 meds)", f"{polimedicados} ({polimedicados/total_pacientes*100:.0f}%)")
-    m5.metric("Necessitam de Apoio", f"{com_apoio} ({com_apoio/total_pacientes*100:.0f}%)")
+    
+    # Contar indicações
+    indicacoes_dict = {}
+    for p in lista_pacientes:
+        ind = p['indication'] or "Não especificada"
+        indicacoes_dict[ind] = indicacoes_dict.get(ind, 0) + 1
+    
+    # Mostrar total de indicações diferentes
+    m5.metric("Indicações Clínicas", f"{len(indicacoes_dict)} tipos")
 
     st.markdown("---")
 
@@ -487,6 +495,53 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             xaxis_title=""
         )
         st.plotly_chart(fig_distribuicao_meds, use_container_width=True)
+
+     with c_g5:
+              # GRÁFICO DE INDICAÇÕES CLÍNICAS
+    st.markdown("---")
+    st.subheader("🏥 Indicações Clínicas dos Pacientes")
+    
+    df_indicacoes = pd.DataFrame(list(indicacoes_dict.items()), columns=['Indicação', 'Pacientes'])
+    df_indicacoes = df_indicacoes.sort_values('Pacientes', ascending=False)
+    
+    col_ind1, col_ind2 = st.columns(2)
+    
+    with col_ind1:
+        # Gráfico de barras
+        fig_ind = px.bar(
+            df_indicacoes,
+            x='Indicação',
+            y='Pacientes',
+            color='Indicação',
+            text='Pacientes',
+            color_discrete_sequence=px.colors.qualitative.Set2
+        )
+        fig_ind.update_layout(
+            showlegend=False,
+            margin=dict(t=20, b=20, l=20, r=20),
+            height=300,
+            yaxis_title="Número de Pacientes",
+            xaxis_title=""
+        )
+        st.plotly_chart(fig_ind, use_container_width=True)
+    
+    with col_ind2:
+        # Gráfico de pizza
+        fig_ind_pie = px.pie(
+            df_indicacoes,
+            names='Indicação',
+            values='Pacientes',
+            color='Indicação',
+            color_discrete_sequence=px.colors.qualitative.Set2,
+            hole=0.4
+        )
+        fig_ind_pie.update_traces(textinfo='percent+label')
+        fig_ind_pie.update_layout(
+            showlegend=False,
+            margin=dict(t=20, b=20, l=20, r=20),
+            height=300
+        )
+        st.plotly_chart(fig_ind_pie, use_container_width=True)
 
 # ==============================================================================
 # 8. MODO 2: FICHA DO PACIENTE
