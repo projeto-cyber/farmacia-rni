@@ -386,7 +386,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             interagentes_dict[med_nome] = interagentes_dict.get(med_nome, 0) + 1
 
     conn.close()
-
+    
     # METRICAS RÁPIDAS
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Total de Pacientes", total_pacientes)
@@ -405,8 +405,52 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
 
     st.markdown("---")
 
-    # GRÁFICOS - LINHA 1
-    c_g1, c_g2 = st.columns(2)
+    # GRÁFICO DE INDICAÇÕES CLÍNICAS
+    st.subheader("🏥 Indicações Clínicas dos Pacientes")
+    
+    df_indicacoes = pd.DataFrame(list(indicacoes_dict.items()), columns=['Indicação', 'Pacientes'])
+    df_indicacoes = df_indicacoes.sort_values('Pacientes', ascending=False)
+    
+    col_ind1, col_ind2 = st.columns(2)
+    
+    with col_ind1:
+        # Gráfico de barras
+        fig_ind = px.bar(
+            df_indicacoes,
+            x='Indicação',
+            y='Pacientes',
+            color='Indicação',
+            text='Pacientes',
+            color_discrete_sequence=px.colors.qualitative.Set2
+        )
+        fig_ind.update_layout(
+            showlegend=False,
+            margin=dict(t=20, b=20, l=20, r=20),
+            height=300,
+            yaxis_title="Número de Pacientes",
+            xaxis_title=""
+        )
+        st.plotly_chart(fig_ind, use_container_width=True)
+    
+    with col_ind2:
+        # Gráfico de pizza
+        fig_ind_pie = px.pie(
+            df_indicacoes,
+            names='Indicação',
+            values='Pacientes',
+            color='Indicação',
+            color_discrete_sequence=px.colors.qualitative.Set2,
+            hole=0.4
+        )
+        fig_ind_pie.update_traces(textinfo='percent+label')
+        fig_ind_pie.update_layout(
+            showlegend=False,
+            margin=dict(t=20, b=20, l=20, r=20),
+            height=300
+        )
+        st.plotly_chart(fig_ind_pie, use_container_width=True)
+
+    st.markdown("---")
     
     with c_g1:
         st.subheader("🎯 Controle Terapêutico (TTR Populacional)")
@@ -497,8 +541,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         st.plotly_chart(fig_distribuicao_meds, use_container_width=True)
 
      with c_g5:
-            st.markdown("---")
-            st.subheader("♥️ Indicação Clínicas dos Pacientes")
+        st.markdown("---")
+            st.subheader("♥️ Indicação Clínicas")
          df_indicacoes = pd.DataFrame(list(indicacoes_dict.items()), columns=['Indicação', 'Pacientes'])
     df_indicacoes = df_indicacoes.sort_values('Pacientes', ascending=False)
     
