@@ -497,10 +497,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         st.plotly_chart(fig_distribuicao_meds, use_container_width=True)
 
      with c_g5:
-              # GRÁFICO DE INDICAÇÕES CLÍNICAS
-    st.markdown("---")
-    st.subheader("🏥 Indicações Clínicas dos Pacientes")
-    
+            st.subheader("♥️ Indicação Clínicas dos Pacientes")
+         
     df_indicacoes = pd.DataFrame(list(indicacoes_dict.items()), columns=['Indicação', 'Pacientes'])
     df_indicacoes = df_indicacoes.sort_values('Pacientes', ascending=False)
     
@@ -542,6 +540,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             height=300
         )
         st.plotly_chart(fig_ind_pie, use_container_width=True)
+
+
 
 # ==============================================================================
 # 8. MODO 2: FICHA DO PACIENTE
