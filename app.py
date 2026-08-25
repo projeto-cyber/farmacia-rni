@@ -441,18 +441,6 @@ st.sidebar.markdown("### 🩺 Ambulatório RNI")
 modo_visao = st.sidebar.radio("Navegação:", ["🏠 Visão Geral (Dashboard)", "👤 Ficha do Paciente"], index=0)
 st.sidebar.markdown("---")
 
-# Tema (opcional)
-tema = st.sidebar.selectbox("🎨 Tema:", ["Claro", "Escuro"], index=0)
-if tema == "Escuro":
-    st.markdown("""
-    <style>
-    .stApp {
-        background-color: #1E293B;
-        color: #F1F5F9;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
 # GERENCIAMENTO DE CADASTRO
 with st.sidebar.expander("➕ Cadastrar Novo Paciente"):
     with st.form("form_add_paciente", clear_on_submit=True):
@@ -535,7 +523,6 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     polimedicados = 0
     interagentes_dict = {}
     status_categorias = []
-    lista_polimedicados = []
     
     for p in lista_pacientes:
         rni_rows = conn.execute("SELECT * FROM historico_rni WHERE patient_id = ? ORDER BY date DESC", (p['id'],)).fetchall()
@@ -548,7 +535,6 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         qtd_meds = contar_medicamentos(meds_texto)
         if qtd_meds >= 5:
             polimedicados += 1
-            lista_polimedicados.append(p['name'])
             
         interacoes = checar_interacoes(meds_texto)
         for inter in interacoes:
@@ -598,7 +584,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
 
     st.markdown("---")
 
-    # GRÁFICOS - LINHA 2 (NOVOS GRÁFICOS SOLICITADOS)
+    # GRÁFICOS - LINHA 2 (FAIXAS ETÁRIAS)
     st.subheader("👥 Distribuição por Faixa Etária")
     c_g3, c_g4 = st.columns(2)
     
@@ -610,12 +596,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         
         df_idade = pd.DataFrame({
             "Faixa Etária": ["Adultos (<60 anos)", "Idosos (60-79 anos)", "Idosos 80+ (≥80 anos)"],
-            "Pacientes": [faixa_adultos, faixa_idosos, faixa_muito_idosos],
-            "Percentual": [
-                faixa_adultos/total_pacientes*100,
-                faixa_idosos/total_pacientes*100,
-                faixa_muito_idosos/total_pacientes*100
-            ]
+            "Pacientes": [faixa_adultos, faixa_idosos, faixa_muito_idosos]
         })
         
         fig_idade = px.bar(
@@ -627,7 +608,6 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             color_discrete_sequence=['#3B82F6', '#F59E0B', '#8B5CF6'],
             title="Distribuição por Faixa Etária"
         )
-        fig_idade.update_traces(texttemplate='%{text} (%{customdata:.1f}%)', customdata=df_idade['Percentual'])
         fig_idade.update_layout(showlegend=False, margin=dict(t=40, b=20, l=20, r=20), height=350)
         st.plotly_chart(fig_idade, use_container_width=True)
 
@@ -648,7 +628,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
 
     st.markdown("---")
 
-    # GRÁFICOS - LINHA 3 (POLIFARMÁCIA)
+    # GRÁFICOS - LINHA 3 (POLIFARMÁCIA E INTERAÇÕES)
     st.subheader("💊 Polifarmácia e Interações Medicamentosas")
     c_g5, c_g6 = st.columns(2)
     
@@ -656,4 +636,23 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         # Gráfico de polifarmácia
         nao_polimedicados = total_pacientes - polimedicados
         df_poli = pd.DataFrame({
-            "Categoria": ["Polimedicados (≥5 meds)", "Não Polimedicados (<
+            "Categoria": ["Polimedicados (≥5 meds)", "Não Polimedicados (<5 meds)"],
+            "Pacientes": [polimedicados, nao_polimedicados]
+        })
+        
+        fig_poli = px.pie(
+            df_poli,
+            names='Categoria',
+            values='Pacientes',
+            color='Categoria',
+            color_discrete_sequence=['#EF4444', '#10B981'],
+            hole=0.4,
+            title="Distribuição de Polifarmácia"
+        )
+        fig_poli.update_traces(textinfo='percent+label')
+        fig_poli.update_layout(showlegend=False, margin=dict(t=40, b=20, l=20, r=20), height=350)
+        st.plotly_chart(fig_poli, use_container_width=True)
+
+    with c_g6:
+        # Gráfico de pacientes com interações medicamentosas
+        pacientes_com_interacao
