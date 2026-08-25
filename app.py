@@ -451,6 +451,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         st.plotly_chart(fig_ind_pie, use_container_width=True)
 
     st.markdown("---")
+
+    c_g1, c_g2 = st.columns(2)  
     
     with c_g1:
         st.subheader("🎯 Controle Terapêutico (TTR Populacional)")
