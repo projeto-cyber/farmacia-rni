@@ -2,9 +2,13 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import sqlite3
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import tempfile
 
 # ==============================================================================
 # 1. CONFIGURAÇÃO DA PÁGINA E ESTILIZAÇÃO CSS
@@ -76,7 +80,133 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. BANCO DE INTERAÇÕES MEDICAMENTOSAS COM A VARFARINA
+# 2. BANCO DE DADOS SQLITE (INICIALIZAÇÃO & MIGRAÇÃO)
+# ==============================================================================
+DB_NAME = "ambulatorio_rni.db"
+
+class DatabaseError(Exception):
+    """Erro personalizado para operações de banco de dados"""
+    pass
+
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pacientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            age INTEGER,
+            contact TEXT,
+            indication TEXT,
+            target TEXT,
+            weekly_dose REAL,
+            level TEXT,
+            status TEXT,
+            meds TEXT,
+            needs_support TEXT,
+            evolution TEXT
+        )
+    """)
+    
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS historico_rni (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            patient_id INTEGER,
+            date TEXT NOT NULL,
+            value REAL,
+            status TEXT,
+            obs TEXT,
+            FOREIGN KEY (patient_id) REFERENCES pacientes (id) ON DELETE CASCADE
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def executar_query_segura(query, params=None):
+    """Executa query com tratamento de erro e rollback"""
+    conn = get_db_connection()
+    try:
+        if params:
+            cursor = conn.execute(query, params)
+        else:
+            cursor = conn.execute(query)
+        conn.commit()
+        return cursor
+    except sqlite3.Error as e:
+        conn.rollback()
+        raise DatabaseError(f"Erro no banco de dados: {str(e)}")
+    finally:
+        conn.close()
+
+@st.cache_data(ttl=60)
+def carregar_pacientes():
+    """Carrega pacientes com cache para melhor performance"""
+    conn = get_db_connection()
+    pacientes = conn.execute("SELECT * FROM pacientes").fetchall()
+    conn.close()
+    return [dict(p) for p in pacientes]
+
+# ==============================================================================
+# 3. FUNÇÕES DE EXPORTAR E IMPORTAR PROJETO (BACKUP / RESTORE)
+# ==============================================================================
+def exportar_projeto_json():
+    conn = get_db_connection()
+    pacientes = [dict(p) for p in conn.execute("SELECT * FROM pacientes").fetchall()]
+    historico = [dict(h) for h in conn.execute("SELECT * FROM historico_rni").fetchall()]
+    conn.close()
+    
+    dados_exportacao = {
+        "versao": "2.0",
+        "data_backup": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "pacientes": pacientes,
+        "historico_rni": historico
+    }
+    return json.dumps(dados_exportacao, ensure_ascii=False, indent=2)
+
+def importar_projeto_json(conteudo_json):
+    try:
+        dados = json.loads(conteudo_json)
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        
+        # Limpa as tabelas atuais para substituir pelos dados importados
+        cursor.execute("DELETE FROM historico_rni")
+        cursor.execute("DELETE FROM pacientes")
+        
+        for p in dados.get("pacientes", []):
+            cursor.execute("""
+                INSERT INTO pacientes (id, name, age, contact, indication, target, weekly_dose, level, status, meds, needs_support, evolution)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                p.get("id"), p.get("name"), p.get("age"), p.get("contact"), p.get("indication"),
+                p.get("target"), p.get("weekly_dose"), p.get("level"), p.get("status"),
+                p.get("meds"), p.get("needs_support"), p.get("evolution")
+            ))
+            
+        for h in dados.get("historico_rni", []):
+            cursor.execute("""
+                INSERT INTO historico_rni (id, patient_id, date, value, status, obs)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (
+                h.get("id"), h.get("patient_id"), h.get("date"), h.get("value"), h.get("status"), h.get("obs")
+            ))
+            
+        conn.commit()
+        conn.close()
+        return True, "Projeto importado e restaurado com sucesso!"
+    except Exception as e:
+        return False, f"Erro ao importar arquivo: {str(e)}"
+
+# ==============================================================================
+# 4. BANCO DE INTERAÇÕES MEDICAMENTOSAS COM A VARFARINA
 # ==============================================================================
 INTERACOES_VARFARINA = {
     "AMIODARONA": {"risco": "Alta", "efeito": "Inibe CYP2C9/3A4 e aumenta expressivamente o RNI com risco de hemorragia.", "conduta": "Reduzir dose da Varfarina em 30% a 50% e monitorar RNI semanalmente."},
@@ -111,8 +241,14 @@ def checar_interacoes(texto_meds):
             encontradas.append({"medicamento": med, **info})
     return encontradas
 
+def contar_medicamentos(texto_meds):
+    if not texto_meds or not texto_meds.strip():
+        return 0
+    itens = [m.strip() for m in texto_meds.replace('\n', ',').replace(';', ',').split(',') if m.strip()]
+    return len(itens)
+
 # ==============================================================================
-# 3. CÁLCULOS E PERSISTÊNCIA DE DADOS
+# 5. CÁLCULOS TTR E UTILITÁRIOS
 # ==============================================================================
 def calcular_ttr_rosendaal(historico, min_alvo, max_alvo):
     historico_rni = [e for e in historico if e.get('value') is not None]
@@ -157,14 +293,14 @@ def calcular_ttr_direto(historico, min_alvo, max_alvo):
     except Exception:
         return 0.0, 0, 0
 
-def obter_status_paciente(p):
-    if p.get('status') == 'Alta':
+def obter_status_paciente(p, historico):
+    if p['status'] == 'Alta':
         return 'Em Alta Terapêutica'
     try:
-        min_a, max_a = map(float, p.get('target', '2.0-3.0').split('-'))
+        min_a, max_a = map(float, p['target'].split('-'))
     except Exception:
         min_a, max_a = 2.0, 3.0
-    ttr = calcular_ttr_rosendaal(p.get('rniHistory', []), min_a, max_a)
+    ttr = calcular_ttr_rosendaal(historico, min_a, max_a)
     if ttr >= 70.0:
         return 'Apto para Alta'
     elif ttr >= 60.0:
@@ -172,526 +308,352 @@ def obter_status_paciente(p):
     else:
         return 'Precisa de Atenção'
 
-def salvar_dados_json(dados):
-    with open("dados.json", "w", encoding="utf-8") as f:
-        json.dump(dados, f, ensure_ascii=False, indent=2)
+# ==============================================================================
+# 6. FUNÇÕES DE SUGESTÃO DE DOSE E ALERTAS
+# ==============================================================================
+def sugerir_ajuste_dose(rni_atual, dose_atual, min_alvo, max_alvo):
+    """
+    Sugere ajuste de dose baseado no RNI atual
+    Baseado nas diretrizes do ACCP (American College of Chest Physicians)
+    """
+    if rni_atual < 1.5:
+        return {
+            "acao": "Aumentar dose em 10-15%",
+            "nova_dose": dose_atual * 1.15,
+            "dose_extra": "Considerar dose de reforço",
+            "retorno": "7 dias"
+        }
+    elif 1.5 <= rni_atual < min_alvo:
+        return {
+            "acao": "Aumentar dose em 5-10%",
+            "nova_dose": dose_atual * 1.10,
+            "dose_extra": None,
+            "retorno": "14 dias"
+        }
+    elif min_alvo <= rni_atual <= max_alvo:
+        return {
+            "acao": "Manter dose atual",
+            "nova_dose": dose_atual,
+            "dose_extra": None,
+            "retorno": "30 dias"
+        }
+    elif max_alvo < rni_atual <= 4.5:
+        return {
+            "acao": "Reduzir dose em 5-10%",
+            "nova_dose": dose_atual * 0.90,
+            "dose_extra": None,
+            "retorno": "14 dias"
+        }
+    elif 4.5 < rni_atual <= 5.0:
+        return {
+            "acao": "Omitir 1 dose e reduzir 10%",
+            "nova_dose": dose_atual * 0.90,
+            "dose_extra": "Omitir próxima dose",
+            "retorno": "7 dias"
+        }
+    else:  # RNI > 5.0
+        return {
+            "acao": "URGENTE - Avaliar suspensão temporária",
+            "nova_dose": None,
+            "dose_extra": "Contatar médico imediatamente",
+            "retorno": "Imediato"
+        }
+
+def verificar_alertas_paciente(p, historico, min_alvo, max_alvo):
+    """
+    Verifica e retorna alertas importantes para o paciente
+    """
+    alertas = []
+    
+    # Verificar último RNI
+    if historico and historico[0].get('value'):
+        ultimo_rni = float(historico[0]['value'])
+        
+        if ultimo_rni > 5.0:
+            alertas.append({
+                "tipo": "critico",
+                "mensagem": f"RNI CRÍTICO: {ultimo_rni} - Contatar médico imediatamente"
+            })
+        elif ultimo_rni > max_alvo + 1:
+            alertas.append({
+                "tipo": "alto",
+                "mensagem": f"RNI elevado: {ultimo_rni} - Avaliar redução de dose"
+            })
+        elif ultimo_rni < min_alvo - 0.5:
+            alertas.append({
+                "tipo": "moderado",
+                "mensagem": f"RNI abaixo do alvo: {ultimo_rni} - Risco de trombose"
+            })
+    
+    # Verificar tempo desde última consulta
+    if historico:
+        ultima_data = datetime.strptime(historico[0]['date'], "%Y-%m-%d")
+        dias_desde_ultima = (datetime.now() - ultima_data).days
+        if dias_desde_ultima > 45:
+            alertas.append({
+                "tipo": "moderado",
+                "mensagem": f"Paciente sem acompanhamento há {dias_desde_ultima} dias"
+            })
+    
+    return alertas
 
 # ==============================================================================
-# 4. CARREGAMENTO INICIAL
+# 7. FUNÇÃO PARA GERAR RELATÓRIO PDF
 # ==============================================================================
-if "dados" not in st.session_state:
-    if os.path.exists("dados.json"):
-        with open("dados.json", "r", encoding="utf-8") as f:
-            st.session_state.dados = json.load(f)
-    else:
-        st.session_state.dados = {"patients": [], "agenda": {}}
-
-pacientes = st.session_state.dados.get("patients", [])
-pacientes = sorted(pacientes, key=lambda x: (x.get('status') == 'Alta', x['name']))
+def gerar_relatorio_pdf(paciente, historico, ttr):
+    """
+    Gera relatório PDF do paciente para impressão
+    """
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp:
+        c = canvas.Canvas(tmp.name, pagesize=letter)
+        width, height = letter
+        
+        # Cabeçalho
+        c.setFont("Helvetica-Bold", 16)
+        c.drawString(50, height - 50, f"Relatório de Acompanhamento - {paciente['name']}")
+        
+        # Dados do paciente
+        c.setFont("Helvetica", 12)
+        c.drawString(50, height - 80, f"Idade: {paciente['age']} anos")
+        c.drawString(50, height - 100, f"Indicação: {paciente['indication']}")
+        c.drawString(50, height - 120, f"Faixa Alvo: {paciente['target']}")
+        c.drawString(50, height - 140, f"TTR: {ttr:.1f}%")
+        c.drawString(50, height - 160, f"Dose Semanal: {paciente['weekly_dose']} mg")
+        
+        # Histórico
+        c.drawString(50, height - 200, "Histórico de RNI:")
+        y_pos = height - 220
+        for item in historico[:10]:  # últimos 10 exames
+            if item.get('value'):
+                c.drawString(70, y_pos, f"{item['date']}: RNI = {item['value']}")
+            else:
+                c.drawString(70, y_pos, f"{item['date']}: FALTA")
+            y_pos -= 20
+        
+        c.save()
+        return tmp.name
 
 # ==============================================================================
-# 5. SIDEBAR E NAVEGAÇÃO
+# 8. SIDEBAR, NAVEGAÇÃO E EXPORTAR/IMPORTAR PROJETO
 # ==============================================================================
 st.sidebar.markdown("### 🩺 Ambulatório RNI")
 
 modo_visao = st.sidebar.radio("Navegação:", ["🏠 Visão Geral (Dashboard)", "👤 Ficha do Paciente"], index=0)
 st.sidebar.markdown("---")
 
+# Tema (opcional)
+tema = st.sidebar.selectbox("🎨 Tema:", ["Claro", "Escuro"], index=0)
+if tema == "Escuro":
+    st.markdown("""
+    <style>
+    .stApp {
+        background-color: #1E293B;
+        color: #F1F5F9;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# GERENCIAMENTO DE CADASTRO
 with st.sidebar.expander("➕ Cadastrar Novo Paciente"):
     with st.form("form_add_paciente", clear_on_submit=True):
         novo_nome = st.text_input("Nome Completo:")
-        nova_idade = st.number_input("Idade:", min_value=1, max_value=120, value=60)
+        nova_idade = st.number_input("Idade:", min_value=1, max_value=120, value=65)
         novo_contato = st.text_input("Telefone/Contato:")
         nova_indicacao = st.selectbox("Indicação Clínica:", ["Fibrilação Atrial", "TVP/EP", "Prótese Valvar Metálica", "Outra"])
         nova_faixa = st.selectbox("Faixa Alvo RNI:", ["2.0-3.0", "2.5-3.5", "1.5-2.0"])
         nova_dose = st.number_input("Dose Semanal Inicial (mg):", value=35.0, step=2.5)
-        meds_iniciais = st.text_area("Medicamentos em Casa:", placeholder="Ex: Amiodarona 200mg, Omeprazol 20mg...")
+        novo_apoio = st.selectbox("Necessita de Apoio/Cuidador?", ["Não", "Sim"])
+        meds_iniciais = st.text_area("Medicamentos de Uso Contínuo:", placeholder="Ex: Amiodarona 200mg, Omeprazol 20mg, Losartana 50mg, AAS 100mg...")
         
         if st.form_submit_button("Salvar Paciente") and novo_nome:
-            novo_p = {
-                "id": str(len(pacientes) + 1),
-                "name": novo_nome,
-                "age": nova_idade,
-                "contact": novo_contato,
-                "indication": nova_indicacao,
-                "target": nova_faixa,
-                "weeklyDose": nova_dose,
-                "organizer": "Não",
-                "level": "Médio",
-                "status": "Ativo",
-                "meds": meds_iniciais,
-                "rniHistory": [],
-                "evolution": ""
-            }
-            st.session_state.dados["patients"].append(novo_p)
-            salvar_dados_json(st.session_state.dados)
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO pacientes (name, age, contact, indication, target, weekly_dose, level, status, meds, needs_support, evolution)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (novo_nome, nova_idade, novo_contato, nova_indicacao, nova_faixa, nova_dose, "Médio", "Ativo", meds_iniciais, novo_apoio, ""))
+            conn.commit()
+            conn.close()
             st.success("Paciente cadastrado!")
             st.rerun()
 
+st.sidebar.markdown("---")
+
+# EXPORTAÇÃO E IMPORTAÇÃO COMPLETA DO PROJETO (BACKUP / RESTORE)
+with st.sidebar.expander("💾 Gestão de Dados do Projeto"):
+    st.caption("Salve ou restaure todo o projeto (pacientes, histórico de RNI e evoluções).")
+    
+    # 1. Exportar
+    json_backup = exportar_projeto_json()
+    nome_arq_backup = f"backup_ambulatorio_rni_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    
+    st.download_button(
+        label="📥 Exportar Backup do Projeto",
+        data=json_backup,
+        file_name=nome_arq_backup,
+        mime="application/json",
+        use_container_width=True,
+        help="Baixa um arquivo com todos os dados atuais do sistema para guardar no seu computador/Documentos."
+    )
+    
+    st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+    
+    # 2. Importar
+    arquivo_upload = st.file_uploader("📤 Importar Backup do Projeto", type=["json"], help="Selecione um arquivo de backup previamente exportado.")
+    if arquivo_upload is not None:
+        if st.button("🔄 Restaurar Dados do Arquivo", use_container_width=True, type="primary"):
+            conteudo = arquivo_upload.read().decode("utf-8")
+            sucesso, msg = importar_projeto_json(conteudo)
+            if sucesso:
+                st.success(msg)
+                st.rerun()
+            else:
+                st.error(msg)
+
 # ==============================================================================
-# 6. MODO 1: DASHBOARD
+# 9. MODO 1: DASHBOARD POPULACIONAL
 # ==============================================================================
 if modo_visao == "🏠 Visão Geral (Dashboard)":
     st.title("📊 Painel Geral do Ambulatório de Anticoagulação")
-    st.caption("Mapeamento populacional de estabilidade terapêutica e triagem clínica dos pacientes.")
+    st.caption("Mapeamento da população, perfis de complexidade, idosos, polifarmácia e interações.")
     
-    if not pacientes:
-        st.warning("Nenhum paciente cadastrado.")
+    conn = get_db_connection()
+    pacientes_raw = conn.execute("SELECT * FROM pacientes").fetchall()
+    
+    if not pacientes_raw:
+        st.warning("Nenhum paciente cadastrado no banco de dados. Utilize a opção na barra lateral ou importe um projeto salvo.")
+        conn.close()
         st.stop()
 
-    categorias = [obter_status_paciente(pt) for pt in pacientes]
-    df_dashboard = pd.DataFrame({"Paciente": [pt['name'] for pt in pacientes], "Categoria": categorias})
+    lista_pacientes = [dict(p) for p in pacientes_raw]
     
-    col_dash1, col_dash2 = st.columns([1, 1])
+    total_pacientes = len(lista_pacientes)
+    idosos = sum(1 for p in lista_pacientes if p['age'] >= 60)
+    idosos_mais_velhos = sum(1 for p in lista_pacientes if p['age'] >= 80)
+    com_apoio = sum(1 for p in lista_pacientes if p['needs_support'] == "Sim")
     
-    with col_dash1:
-        st.subheader("📈 Distribuição do Controle do TTR")
-        df_pizza = df_dashboard['Categoria'].value_counts().reset_index()
-        df_pizza.columns = ['Status', 'Total']
+    polimedicados = 0
+    interagentes_dict = {}
+    status_categorias = []
+    lista_polimedicados = []
+    
+    for p in lista_pacientes:
+        rni_rows = conn.execute("SELECT * FROM historico_rni WHERE patient_id = ? ORDER BY date DESC", (p['id'],)).fetchall()
+        rni_hist = [dict(r) for r in rni_rows]
         
-        fig_pizza = px.pie(
-            df_pizza, names='Status', values='Total', color='Status',
+        cat = obter_status_paciente(p, rni_hist)
+        status_categorias.append(cat)
+        
+        meds_texto = p['meds'] or ""
+        qtd_meds = contar_medicamentos(meds_texto)
+        if qtd_meds >= 5:
+            polimedicados += 1
+            lista_polimedicados.append(p['name'])
+            
+        interacoes = checar_interacoes(meds_texto)
+        for inter in interacoes:
+            med_nome = inter['medicamento']
+            interagentes_dict[med_nome] = interagentes_dict.get(med_nome, 0) + 1
+
+    conn.close()
+
+    # METRICAS RÁPIDAS
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Total de Pacientes", total_pacientes)
+    m2.metric("Idosos (≥ 60 anos)", f"{idosos} ({idosos/total_pacientes*100:.0f}%)")
+    m3.metric("Very Elderly (≥ 80 anos)", f"{idosos_mais_velhos} ({idosos_mais_velhos/total_pacientes*100:.0f}%)")
+    m4.metric("Polimedicados (≥ 5 meds)", f"{polimedicados} ({polimedicados/total_pacientes*100:.0f}%)")
+    m5.metric("Necessitam de Apoio", f"{com_apoio} ({com_apoio/total_pacientes*100:.0f}%)")
+
+    st.markdown("---")
+
+    # GRÁFICOS - LINHA 1
+    c_g1, c_g2 = st.columns(2)
+    
+    with c_g1:
+        st.subheader("🎯 Controle Terapêutico (TTR Populacional)")
+        df_status = pd.DataFrame({"Categoria": status_categorias}).value_counts().reset_index()
+        df_status.columns = ['Status', 'Total']
+        fig_pie = px.pie(
+            df_status, names='Status', values='Total', color='Status',
             color_discrete_map={'Apto para Alta': '#10B981', 'Em Melhora': '#F59E0B', 'Precisa de Atenção': '#EF4444', 'Em Alta Terapêutica': '#94A3B8'},
             hole=0.4
         )
-        fig_pizza.update_traces(textinfo='percent+label')
-        fig_pizza.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20))
-        st.plotly_chart(fig_pizza, use_container_width=True)
+        fig_pie.update_traces(textinfo='percent+label')
+        fig_pie.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20), height=350)
+        st.plotly_chart(fig_pie, use_container_width=True)
 
-    with col_dash2:
-        st.subheader("🎯 Triagem e Status Clínico")
-        tab_aptos, tab_atencao = st.tabs(["✅ Aptos para Alta (TTR ≥ 70%)", "⚠️ RNI Instável / Atenção"])
-        
-        with tab_aptos:
-            aptos = [pt for pt in pacientes if obter_status_paciente(pt) == 'Apto para Alta']
-            if aptos:
-                for pt in aptos:
-                    min_a, max_a = map(float, pt.get('target', '2.0-3.0').split('-'))
-                    ttr = calcular_ttr_rosendaal(pt.get('rniHistory', []), min_a, max_a)
-                    st.success(f"**{pt['name']}** — TTR: **{ttr:.1f}%** | Target: {pt.get('target')}")
-            else:
-                st.info("Nenhum paciente com TTR ≥ 70%.")
-                
-        with tab_atencao:
-            atencao = [pt for pt in pacientes if obter_status_paciente(pt) == 'Precisa de Atenção']
-            if atencao:
-                for pt in atencao:
-                    min_a, max_a = map(float, pt.get('target', '2.0-3.0').split('-'))
-                    ttr = calcular_ttr_rosendaal(pt.get('rniHistory', []), min_a, max_a)
-                    rni_validos = [e for e in pt.get('rniHistory', []) if e.get('value') is not None]
-                    ult_rni = rni_validos[0]['value'] if rni_validos else "N/A"
-                    st.error(f"**{pt['name']}** — TTR: **{ttr:.1f}%** | Último RNI: **{ult_rni}**")
-            else:
-                st.info("Nenhum paciente na zona crítica.")
-
-# ==============================================================================
-# 7. MODO 2: FICHA DO PACIENTE
-# ==============================================================================
-else:
-    opcoes_pacientes = [f"⚪ {pt['name']} (ALTA)" if pt.get('status') == 'Alta' else f"🟢 {pt['name']}" for pt in pacientes]
-    if not pacientes:
-        st.warning("Cadastre um paciente na barra lateral.")
-        st.stop()
-        
-    paciente_sel_index = st.sidebar.radio("Selecione o paciente:", range(len(opcoes_pacientes)), format_func=lambda i: opcoes_pacientes[i])
-    p = pacientes[paciente_sel_index]
-    em_alta = (p.get('status') == 'Alta')
-
-    # CABEÇALHO E ALTERAÇÃO DE DADOS DO PACIENTE
-    col_titulo, col_edit_btn, col_status_btn = st.columns([3, 1, 1])
-    with col_titulo:
-        st.markdown(f"# {'<span style=\"color: #94A3B8;\">👤 ' + p['name'] + ' (Alta Terapêutica)</span>' if em_alta else '👤 ' + p['name']}", unsafe_allow_html=True)
-
-    with col_edit_btn:
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.popover("✏️ Editar Paciente", use_container_width=True):
-            st.markdown("### Alterar Dados do Paciente")
-            with st.form("form_edit_paciente"):
-                edit_nome = st.text_input("Nome:", value=p.get('name'))
-                edit_idade = st.number_input("Idade:", value=int(p.get('age', 60)))
-                edit_contato = st.text_input("Contato:", value=p.get('contact', ''))
-                edit_indicacao = st.selectbox("Indicação:", ["Fibrilação Atrial", "TVP/EP", "Prótese Valvar Metálica", "Outra"], index=0)
-                edit_target = st.selectbox("Faixa Alvo:", ["2.0-3.0", "2.5-3.5", "1.5-2.0"], index=["2.0-3.0", "2.5-3.5", "1.5-2.0"].index(p.get('target', '2.0-3.0')))
-                edit_level = st.selectbox("Complexidade:", ["Baixo", "Médio", "Alto"], index=["Baixo", "Médio", "Alto"].index(p.get('level', 'Médio')))
-                edit_dose = st.number_input("Dose Semanal Total (mg):", value=float(p.get('weeklyDose', 35.0)), step=2.5)
-                
-                if st.form_submit_button("Atualizar Cadastro"):
-                    p['name'] = edit_nome
-                    p['age'] = edit_idade
-                    p['contact'] = edit_contato
-                    p['indication'] = edit_indicacao
-                    p['target'] = edit_target
-                    p['level'] = edit_level
-                    p['weeklyDose'] = edit_dose
-                    salvar_dados_json(st.session_state.dados)
-                    st.success("Dados atualizados!")
-                    st.rerun()
-
-    with col_status_btn:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 Alternar Status", use_container_width=True):
-            p['status'] = 'Ativo' if em_alta else 'Alta'
-            salvar_dados_json(st.session_state.dados)
-            st.rerun()
-
-    # INFOS RÁPIDAS
-    col_info1, col_info2, col_info3 = st.columns([2, 2, 2])
-    try:
-        min_alvo, max_alvo = map(float, p.get('target', '2.0-3.0').split('-'))
-    except Exception:
-        min_alvo, max_alvo = 2.0, 3.0
-
-    ttr_valor = calcular_ttr_rosendaal(p.get('rniHistory', []), min_alvo, max_alvo)
-    ttr_direto, exames_na_faixa, total_exames = calcular_ttr_direto(p.get('rniHistory', []), min_alvo, max_alvo)
-
-    cor_ttr, bg_badge, status_ttr = ("#64748B", "#F1F5F9", "Alta") if em_alta else (("#10B981", "#ECFDF5", "Estável") if ttr_valor >= 70.0 else (("#F59E0B", "#FFFBEB", "Alerta") if ttr_valor >= 60.0 else ("#EF4444", "#FEF2F2", "Crítico")))
-    level_class = "level-alta" if em_alta else ("level-baixo" if p.get('level') == "Baixo" else "level-alto" if p.get('level') == "Alto" else "level-medio")
-
-    with col_info1:
-        st.markdown(f"""
-        <div class="patient-card">
-            <div class="info-label">Dados Demográficos</div>
-            <div class="info-value">Idade: {p.get('age', 'N/A')} anos</div>
-            <div class="info-value">Contato: {p.get('contact', 'Não informado')}</div>
-            <div class="info-label" style="margin-top: 8px;">Complexidade</div>
-            <div><span class="badge-level {level_class}">{ 'ALTA' if em_alta else p.get('level', 'Médio') }</span></div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_info2:
-        st.markdown(f"""
-        <div class="patient-card">
-            <div class="info-label">Manejo Terapêutico</div>
-            <div class="info-value">Indicação: {p.get('indication', 'N/A')}</div>
-            <div class="info-value">Faixa Alvo: {p.get('target', '2.0-3.0')}</div>
-            <div class="info-value">Dose Semanal: {p.get('weeklyDose', 0)} mg</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_info3:
-        st.markdown(f"""
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <span class="info-label">TTR (Rosendaal)</span>
-                <span style="font-size: 0.75rem; font-weight: 600; color: {cor_ttr}; background: {bg_badge}; padding: 2px 8px; border-radius: 9999px;">{status_ttr}</span>
-            </div>
-            <div style="font-size: 2.2rem; font-weight: 700; color: {cor_ttr}; line-height: 1; margin-bottom: 12px;">{ttr_valor:.1f}%</div>
-            <div style="font-size: 0.85rem; color: #475569;">TTR Direto: <b>{ttr_direto:.1f}%</b> ({exames_na_faixa}/{total_exames} exames)</div>
-        </div>
-        """, unsafe_allow_html=True)
+    with c_g2:
+        st.subheader("⚠️ Top Fármacos de Uso Contínuo Interagentes")
+        if interagentes_dict:
+            df_inter = pd.DataFrame(list(interagentes_dict.items()), columns=['Medicamento', 'Pacientes']).sort_values('Pacientes', ascending=True)
+            fig_bar_inter = px.bar(
+                df_inter, x='Pacientes', y='Medicamento', orientation='h',
+                color_discrete_sequence=['#EF4444'], text='Pacientes'
+            )
+            fig_bar_inter.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=350, yaxis_title=None, xaxis_title="Número de Pacientes em Uso")
+            st.plotly_chart(fig_bar_inter, use_container_width=True)
+        else:
+            st.info("Nenhum medicamento interagente registrado nos cadastros atuais.")
 
     st.markdown("---")
 
-    # ==============================================================================
-    # GRÁFICO DE LINHAS COM FAIXA VERDE E PONTOS DE RISCO EM VERMELHO
-    # ==============================================================================
-    col_grafico, col_novo_rni = st.columns([2, 1])
-    with col_grafico:
-        st.subheader("📈 Tendência Temporal do RNI")
+    # GRÁFICOS - LINHA 2 (NOVOS GRÁFICOS SOLICITADOS)
+    st.subheader("👥 Distribuição por Faixa Etária")
+    c_g3, c_g4 = st.columns(2)
+    
+    with c_g3:
+        # Gráfico de faixas etárias detalhado
+        faixa_adultos = sum(1 for p in lista_pacientes if p['age'] < 60)
+        faixa_idosos = sum(1 for p in lista_pacientes if 60 <= p['age'] < 80)
+        faixa_muito_idosos = sum(1 for p in lista_pacientes if p['age'] >= 80)
         
-        historico_rni_validos = [e for e in p.get('rniHistory', []) if e.get('value') is not None]
+        df_idade = pd.DataFrame({
+            "Faixa Etária": ["Adultos (<60 anos)", "Idosos (60-79 anos)", "Idosos 80+ (≥80 anos)"],
+            "Pacientes": [faixa_adultos, faixa_idosos, faixa_muito_idosos],
+            "Percentual": [
+                faixa_adultos/total_pacientes*100,
+                faixa_idosos/total_pacientes*100,
+                faixa_muito_idosos/total_pacientes*100
+            ]
+        })
         
-        if historico_rni_validos:
-            df_chart = pd.DataFrame(historico_rni_validos)
-            df_chart['date'] = pd.to_datetime(df_chart['date'])
-            df_chart['value'] = df_chart['value'].astype(float)
-            df_chart = df_chart.sort_values('date')
+        fig_idade = px.bar(
+            df_idade, 
+            x="Faixa Etária", 
+            y="Pacientes", 
+            color="Faixa Etária", 
+            text="Pacientes",
+            color_discrete_sequence=['#3B82F6', '#F59E0B', '#8B5CF6'],
+            title="Distribuição por Faixa Etária"
+        )
+        fig_idade.update_traces(texttemplate='%{text} (%{customdata:.1f}%)', customdata=df_idade['Percentual'])
+        fig_idade.update_layout(showlegend=False, margin=dict(t=40, b=20, l=20, r=20), height=350)
+        st.plotly_chart(fig_idade, use_container_width=True)
 
-            # Definição de cores dos pontos: Verde na faixa ideal, tons de vermelho fora da faixa
-            def classificar_ponto(v):
-                if min_alvo <= v <= max_alvo:
-                    return '#10B981' # Verde ideal
-                elif v < min_alvo:
-                    return '#EF4444' # Vermelho (Risco de Trombose)
-                else:
-                    return '#991B1B' # Vermelho escuro/Vinho (Risco de Hemorragia)
-
-            colors = [classificar_ponto(v) for v in df_chart['value']]
-
-            fig_rni = go.Figure()
-
-            # Linha principal de tendência
-            fig_rni.add_trace(go.Scatter(
-                x=df_chart['date'],
-                y=df_chart['value'],
-                mode='lines+markers',
-                line=dict(color='#64748B', width=2),
-                marker=dict(size=10, color=colors, line=dict(width=1.5, color='#FFFFFF')),
-                name='RNI'
-            ))
-
-            # Layout customizado via Dict/JSON com Faixa Verde de Destaque
-            layout_config = {
-                "template": "plotly_white",
-                "font": {"family": "Inter, sans-serif", "size": 12, "color": "#1E293B"},
-                "margin": {"l": 40, "r": 20, "t": 30, "b": 40},
-                "height": 300,
-                "hovermode": "x unified",
-                "xaxis": {
-                    "showgrid": True,
-                    "gridcolor": "#F1F5F9",
-                    "linecolor": "#CBD5E1",
-                    "ticks": "outside"
-                },
-                "yaxis": {
-                    "showgrid": True,
-                    "gridcolor": "#F1F5F9",
-                    "linecolor": "#CBD5E1",
-                    "zeroline": False,
-                    "range": [max(0.0, df_chart['value'].min() - 0.5), df_chart['value'].max() + 0.8]
-                },
-                "shapes": [
-                    # Faixa Verde Terapêutica Destacada
-                    {
-                        "type": "rect",
-                        "xref": "paper",
-                        "yref": "y",
-                        "x0": 0,
-                        "x1": 1,
-                        "y0": min_alvo,
-                        "y1": max_alvo,
-                        "fillcolor": "rgba(16, 185, 129, 0.20)",
-                        "line": {"width": 0},
-                        "layer": "below"
-                    },
-                    # Limite Inferior (Verde)
-                    {
-                        "type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
-                        "y0": min_alvo, "y1": min_alvo,
-                        "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}
-                    },
-                    # Limite Superior (Verde)
-                    {
-                        "type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1,
-                        "y0": max_alvo, "y1": max_alvo,
-                        "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}
-                    }
-                ]
-            }
-
-            fig_rni.update_layout(layout_config)
-            st.plotly_chart(fig_rni, use_container_width=True, config={'displayModeBar': False})
-            st.caption("🟢 **Verde:** Faixa Terapêutica Ideal | 🔴 **Vermelho:** Risco de Trombose (RNI baixo) ou Hemorragia (RNI elevado)")
-        else:
-            st.info("Nenhum histórico numérico de RNI registrado até o momento.")
-
-    with col_novo_rni:
-        st.subheader("➕ Registrar RNI")
-        with st.form("form_novo_rni_avulso", clear_on_submit=True):
-            data_avulsa = st.date_input("Data do Exame", value=datetime.today())
-            rni_avulso = st.number_input("Valor de RNI", min_value=0.5, max_value=10.0, step=0.1, value=2.5)
-            if st.form_submit_button("Salvar Exame"):
-                p['rniHistory'].insert(0, {"date": data_avulsa.strftime("%Y-%m-%d"), "value": float(rni_avulso)})
-                salvar_dados_json(st.session_state.dados)
-                st.success("RNI registrado!")
-                st.rerun()
+    with c_g4:
+        # Gráfico de pizza para faixas etárias
+        fig_idade_pie = px.pie(
+            df_idade, 
+            names='Faixa Etária', 
+            values='Pacientes',
+            color='Faixa Etária',
+            color_discrete_sequence=['#3B82F6', '#F59E0B', '#8B5CF6'],
+            hole=0.4,
+            title="Proporção por Faixa Etária"
+        )
+        fig_idade_pie.update_traces(textinfo='percent+label')
+        fig_idade_pie.update_layout(showlegend=False, margin=dict(t=40, b=20, l=20, r=20), height=350)
+        st.plotly_chart(fig_idade_pie, use_container_width=True)
 
     st.markdown("---")
 
-    # ==============================================================================
-    # ORDENAÇÃO DAS ABAS:
-    # 1. Roteiro de Decisão & Consulta
-    # 2. Histórico & Edição de RNI
-    # 3. Medicamentos em Casa & Alertas (ANTES DA EVOLUÇÃO)
-    # 4. Evolução Farmacêutica (MV PEP) - (COM OPÇÃO DE EXCLUIR PACIENTE NO FINAL)
-    # ==============================================================================
-    tab_anamnese, tab_tabela, tab_meds, tab_evolucao = st.tabs([
-        "🔍 Roteiro de Decisão & Consulta", 
-        "📋 Histórico & Edição de RNI", 
-        "💊 Medicamentos em Casa & Alertas",
-        "📝 Evolução Farmacêutica (MV PEP)"
-    ])
-
-    # 1. ANAMNESE E GERADOR DE EVOLUÇÃO
-    with tab_anamnese:
-        st.markdown("### 📋 Lançamento da Consulta Ambulatorial")
-        with st.form("form_anamnese_soap"):
-            c_rni1, c_rni2 = st.columns(2)
-            with c_rni1:
-                registrar_rni_hoje = st.checkbox("Incluir RNI coletado hoje na consulta", value=True)
-            with c_rni2:
-                rni_hoje_valor = st.number_input("RNI Coletado Hoje:", min_value=0.5, max_value=10.0, step=0.1, value=2.5)
-
-            st.markdown("---")
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown("**1. Segurança e Eventos Adversos**")
-                sinais_sangramento = st.radio("Sangramentos recentes:", ["Ausentes", "Leves (gengivorragia, pequenas equimoses)", "Moderados a Graves (epistaxe volumosa, hematúria, melena)"])
-                sinais_trombose = st.radio("Sintomas Tromboembólicos:", ["Ausentes", "Presentes (DNV, dor em MMII, assimetria, cefaleia)"])
-                st.markdown("**2. Aderência**")
-                esquecimento = st.radio("Relato de esquecimento:", ["Nenhum esquecimento (Aderência 100%)", "1 a 2 esquecimentos/mês", "Frequentes erros/esquecimentos"])
-
-            with c2:
-                st.markdown("**3. Fatores Interferentes e Dieta**")
-                alteracao_dieta = st.radio("Vitamina K / Álcool:", ["Manutenção do hábito alimentar usual", "Aumento no consumo de Vitamina K", "Redução expressiva de Vitamina K", "Uso recente de álcool"])
-                interacao_med = st.radio("Medicamentos Concomitantes:", ["Sem alterações de medicamentos", "Início de novo medicamento (Potencial Interação)", "Suspensão de medicamento contínuo"])
-                detalhe_interacao = st.text_input("Especifique novos medicamentos se houver:", placeholder="Ex: Azitromicina")
-
-            st.markdown("---")
-            c3, c4 = st.columns(2)
-            with c3:
-                decisao_dose = st.selectbox("Conduta Posológica:", ["Manter dose semanal atual", "Aumentar dose semanal total (5% a 15%)", "Reduzir dose semanal total (5% a 15%)", "Omitir 1 dose e ajustar dose semanal", "Alta por estabilidade do TTR"])
-                nova_dose_semanal = st.number_input("Nova Dose Semanal Total (mg):", value=float(p.get('weeklyDose', 35.0)), step=2.5)
-            with c4:
-                retorno_dias = st.select_slider("Retorno Agendado:", options=["7 dias", "14 dias", "21 dias", "30 dias", "37 dias", "Alta Terapêutica"], value="30 dias")
-                obs_clinicas = st.text_area("Observações Adicionais:", placeholder="Orientações e detalhes adicionais...")
-
-            if st.form_submit_button("💾 Gerar Evolução Narrativa em Texto Corrido"):
-                data_hoje_str = datetime.now().strftime("%Y-%m-%d")
-                data_hoje_fmt = datetime.now().strftime("%d/%m/%Y às %H:%M")
-                
-                if registrar_rni_hoje:
-                    p['rniHistory'].insert(0, {"date": data_hoje_str, "value": float(rni_hoje_valor)})
-                
-                ttr_atual = calcular_ttr_rosendaal(p['rniHistory'], min_alvo, max_alvo)
-                ttr_dir, ex_f, tot_ex = calcular_ttr_direto(p['rniHistory'], min_alvo, max_alvo)
-                rni_validos = [e for e in p['rniHistory'] if e.get('value') is not None]
-                ult_rni_val = rni_validos[0]['value'] if rni_validos else "N/A"
-                
-                # VERIFICAÇÃO AUTOMÁTICA DE INTERAÇÕES MEDICAMENTOSAS DE CASA QUE ALTERAM O RNI
-                interacoes_casa = checar_interacoes(p.get('meds', ''))
-                texto_interacoes_casa = ""
-                if interacoes_casa:
-                    meds_alerta = [f"{item['medicamento']} ({item['efeito']})" for item in interacoes_casa]
-                    texto_interacoes_casa = (
-                        f" Em análise da farmacoterapia de uso domiciliário, identificou-se o uso de medicamento(s) com potencial de alterar o valor do RNI: "
-                        f"{'; '.join(meds_alerta)}. Foi reforçada a necessidade de monitorização e alinhada a conduta recomendada: "
-                        f"{'; '.join([item['conduta'] for item in interacoes_casa])}."
-                    )
-                
-                # NARRATIVA CONTINUA EM TEXTO CORRIDO COM MEDICAMENTOS INCLUÍDOS
-                soap_texto = (
-                    f"Evolução Farmacêutica - Ambulatório de Anticoagulação Oral ({data_hoje_fmt}). "
-                    f"Paciente {p['name']}, {p.get('age', 'N/A')} anos, em acompanhamento ambulatorial para manejo de anticoagulação por {p.get('indication', 'N/A')}. "
-                    f"Ao interrogatório clínico, nega intercorrências graves, relatando em relação a sangramentos: {sinais_sangramento.lower()} e sobre sintomas tromboembólicos: {sinais_trombose.lower()}. "
-                    f"Quanto ao perfil de adesão farmacoterapêutica, refere {esquecimento.lower()}, associado a {alteracao_dieta.lower()} no padrão alimentar habitual. "
-                    f"Em relação à farmacoterapia concomitante, observa-se {interacao_med.lower()}{f' ({detalhe_interacao})' if detalhe_interacao else ''}.{texto_interacoes_casa} "
-                    f"{f'Informações complementares relatadas: {obs_clinicas}. ' if obs_clinicas else ''}"
-                    f"Ao exame objetivo e dados laboratoriais, aponta-se RNI atual de {ult_rni_val} para uma faixa alvo terapêutica estabelecida de {p.get('target', '2.0-3.0')}. "
-                    f"O cálculo de controle de estabilidade indica Time in Therapeutic Range (TTR) pelo Método de Rosendaal de {ttr_atual:.1f}% e TTR Direto de {ttr_dir:.1f}% ({ex_f} de {tot_ex} exames na faixa). "
-                    f"A dose semanal total prévia utilizada pelo paciente era de {p.get('weeklyDose', 0)} mg. "
-                    f"Em avaliação farmacêutica clínica, o controle da anticoagulação é classificado como {status_ttr.upper()}, estando o RNI "
-                    f"{'adequado e dentro do intervalo alvo' if (ult_rni_val != 'N/A' and min_alvo <= float(ult_rni_val) <= max_alvo) else 'fora da faixa ideal recomendada'}. "
-                    f"Frente aos achados e perfil de segurança, adota-se como plano de conduta: {decisao_dose.lower()}, fixando a nova dose semanal ajustada em {nova_dose_semanal} mg. "
-                    f"O paciente foi devidamente orientado quanto à correta distribuição diária da dose, reconhecimento de sinais de alarme para sangramentos ou trombose, e agendamento de retorno ambulatorial pactuado para {retorno_dias}. "
-                    f"Atendimento finalizado e registrado por Farmacêutico Clínico."
-                )
-                
-                p['evolution'] = soap_texto
-                p['weeklyDose'] = nova_dose_semanal
-                if decisao_dose == "Alta por estabilidade do TTR" or retorno_dias == "Alta Terapêutica":
-                    p['status'] = 'Alta'
-                    
-                salvar_dados_json(st.session_state.dados)
-                st.success("Evolução gerada! Disponível na aba 'Evolução Farmacêutica'.")
-                st.rerun()
-
-    # 2. HISTÓRICO DE COLETAS E REGISTRO DE FALTA
-    with tab_tabela:
-        st.subheader("📋 Histórico de Coletas - Edição e Gestão")
-        
-        with st.expander("🚨 Registrar Ausência / Paciente Faltou à Consulta", expanded=False):
-            with st.form("form_registra_falta"):
-                data_falta = st.date_input("Data da Consulta Não Comparecida:", value=datetime.today())
-                obs_falta = st.text_input("Observação da Falta:", value="Paciente faltou à consulta agendada. Sem justificativa prévia.")
-                if st.form_submit_button("Registrar Ausência"):
-                    p['rniHistory'].insert(0, {
-                        "date": data_falta.strftime("%Y-%m-%d"),
-                        "value": None,
-                        "status": "Falta",
-                        "obs": obs_falta
-                    })
-                    salvar_dados_json(st.session_state.dados)
-                    st.warning("Falta registrada no histórico!")
-                    st.rerun()
-
-        st.markdown("---")
-
-        if p.get('rniHistory'):
-            for idx, item in enumerate(p['rniHistory']):
-                c_data, c_val, c_edit, c_del = st.columns([2, 3, 1, 1])
-                with c_data:
-                    st.write(f"📅 **{item['date']}**")
-                with c_val:
-                    if item.get('status') == 'Falta' or item.get('value') is None:
-                        st.markdown(f"⚠️ <span style='color: #DC2626; font-weight: 600;'>PACIENTE FALTOU À CONSULTA</span><br><small style='color: #64748B;'>Obs: {item.get('obs', 'Sem registro')}</small>", unsafe_allow_html=True)
-                    else:
-                        st.write(f"🩸 **RNI: {item['value']}**")
-                with c_edit:
-                    if item.get('value') is not None:
-                        with st.popover("✏️ Editar"):
-                            with st.form(f"form_edit_rni_{idx}"):
-                                nova_d = st.date_input("Data:", value=datetime.strptime(item['date'], "%Y-%m-%d"))
-                                novo_v = st.number_input("Valor RNI:", value=float(item['value']), step=0.1)
-                                if st.form_submit_button("Atualizar"):
-                                    p['rniHistory'][idx] = {"date": nova_d.strftime("%Y-%m-%d"), "value": float(novo_v)}
-                                    salvar_dados_json(st.session_state.dados)
-                                    st.success("Atualizado!")
-                                    st.rerun()
-                with c_del:
-                    if st.button("🗑️ Excluir", key=f"btn_del_rni_{idx}"):
-                        p['rniHistory'].pop(idx)
-                        salvar_dados_json(st.session_state.dados)
-                        st.success("Registro removido!")
-                        st.rerun()
-                st.markdown("<hr style='margin: 4px 0;'>", unsafe_allow_html=True)
-        else:
-            st.info("Sem exames ou ausências registradas.")
-
-    # 3. MEDICAMENTOS EM CASA E ALERTAS (POSICIONADO ANTES DA EVOLUÇÃO)
-    with tab_meds:
-        st.subheader("💊 Medicamentos de Uso Domiciliar e Alertas Clínicos")
-        st.caption("Cadastre abaixo os medicamentos que o paciente utiliza em casa. Os fármacos com interação de RNI serão automaticamente integrados na Evolução Farmacêutica.")
-        
-        with st.form("form_edit_meds"):
-            meds_texto = st.text_area("Relação de Medicamentos em Uso em Casa:", value=p.get('meds', ''), height=120, placeholder="Ex: Amiodarona 200mg, Omeprazol 20mg, Paracetamol 750mg...")
-            if st.form_submit_button("💾 Salvar Relação de Medicamentos"):
-                p['meds'] = meds_texto
-                salvar_dados_json(st.session_state.dados)
-                st.success("Medicamentos atualizados!")
-                st.rerun()
-
-        st.markdown("---")
-        st.markdown("### ⚠️ Rastreio Automático de Interações com a Varfarina")
-        
-        interacoes = checar_interacoes(p.get('meds', ''))
-        if interacoes:
-            for inter in interacoes:
-                classe_card = "alert-high" if inter['risco'] == "Alta" else "alert-mod"
-                st.markdown(f"""
-                <div class="alert-card {classe_card}">
-                    <div style="font-size: 1rem; font-weight: 700;">🚨 {inter['medicamento']} — Risco de Interação {inter['risco'].upper()}</div>
-                    <div style="margin-top: 4px; font-size: 0.9rem;"><b>Efeito no RNI / Clínico:</b> {inter['efeito']}</div>
-                    <div style="margin-top: 2px; font-size: 0.9rem;"><b>Recomendação / Conduta:</b> {inter['conduta']}</div>
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.success("✅ Nenhuma interação medicamentosa de alto risco identificada na lista atual.")
-
-    # 4. EVOLUÇÃO FARMACÊUTICA (MV PEP) - COM EXCLUSÃO DE PACIENTE NO FINAL
-    with tab_evolucao:
-        st.subheader("📝 Evolução Farmacêutica Narrativa (Padrão MV PEP)")
-        st.caption("Você pode editar o texto abaixo diretamente para acrescentar dados antes de copiar para o prontuário eletrônico.")
-        
-        texto_evol_atual = p.get('evolution', '')
-        novo_texto_editado = st.text_area("Texto Corrido Editável:", value=texto_evol_atual, height=350)
-        
-        if st.button("💾 Salvar Alterações no Texto"):
-            p['evolution'] = novo_texto_editado
-            salvar_dados_json(st.session_state.dados)
-            st.success("Texto da evolução atualizado!")
-
-        # OPÇÃO DE EXCLUIR PACIENTE SOMENTE NESTA ABA
-        st.markdown("<br><br><hr>", unsafe_allow_html=True)
-        st.markdown("### ⚙️ Gestão do Paciente")
-        with st.expander("🚨 Excluir Paciente do Serviço de Farmácia Clínica", expanded=False):
-            st.warning("⚠️ **Atenção:** A exclusão do paciente removerá todos os registros de RNI, evoluções e histórico ambulatorial associados de forma irreversível.")
-            col_del_txt, col_del_btn = st.columns([3, 1])
-            with col_del_txt:
-                confirma_exclusao = st.checkbox(f"Estou ciente e desejo excluir o paciente {p['name']} definitivamente.")
-            with col_del_btn:
-                if st.button("🗑️ Excluir Paciente", type="primary", disabled=not confirma_exclusao, use_container_width=True):
-                    st.session_state.dados["patients"].pop(paciente_sel_index)
-                    salvar_dados_json(st.session_state.dados)
-                    st.success("Paciente excluído com sucesso!")
-                    st.rerun()
+    # GRÁFICOS - LINHA 3 (POLIFARMÁCIA)
+    st.subheader("💊 Polifarmácia e Interações Medicamentosas")
+    c_g5, c_g6 = st.columns(2)
+    
+    with c_g5:
+        # Gráfico de polifarmácia
+        nao_polimedicados = total_pacientes - polimedicados
+        df_poli = pd.DataFrame({
+            "Categoria": ["Polimedicados (≥5 meds)", "Não Polimedicados (<
