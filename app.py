@@ -19,62 +19,137 @@ st.set_page_config(
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-    
+
+    :root {
+        --cor-primaria: #7A2331;        /* vermelho-vinho sóbrio — coração / sangue, sem ser alarmante */
+        --cor-primaria-escura: #5E1B26;
+        --cor-secundaria: #0F6E6A;      /* azul-clínico / verde-água — segurança e calma */
+        --cor-secundaria-clara: #E6F5F4;
+        --cor-texto: #14181F;           /* quase-preto — alto contraste para leitura por idosos */
+        --cor-texto-suave: #4B5563;
+        --cor-fundo-sutil: #F7F9FA;
+        --cor-borda: #E4E7EB;
+    }
+
     html, body, [class*="css"] {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        font-size: 16px;
+        color: var(--cor-texto);
     }
-    
+
+    p, li, label, span, .stMarkdown, .stText, .stCaption { color: var(--cor-texto); }
+    .stMarkdown p, .stMarkdown li { font-size: 1rem; line-height: 1.55; }
+
+    h1, h2, h3 { color: var(--cor-texto); }
+
     [data-testid="stSidebar"] {
-        background-color: #F8FAFC;
-        border-right: 1px solid #E2E8F0;
+        background-color: var(--cor-fundo-sutil);
+        border-right: 1px solid var(--cor-borda);
     }
-    
+
+    /* --- Cabeçalho de marca (ícones de linha fina: coração + ECG) --- */
+    .marca-cabecalho {
+        display: flex; align-items: center; gap: 14px;
+        padding: 4px 0 20px 0;
+        border-bottom: 1px solid var(--cor-borda);
+        margin-bottom: 22px;
+        position: relative; z-index: 1;
+    }
+    .marca-textos { line-height: 1.25; }
+    .marca-titulo { font-size: 1.5rem; font-weight: 700; color: var(--cor-texto); }
+    .marca-subtitulo { font-size: 0.95rem; color: var(--cor-texto-suave); }
+
     .patient-card {
         background: #FFFFFF;
-        border: 1px solid #E2E8F0;
+        border: 1px solid var(--cor-borda);
         border-radius: 12px;
         padding: 20px;
         box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
         margin-bottom: 20px;
+        position: relative; z-index: 1;
     }
-    
+
     .info-label {
-        font-size: 0.75rem;
+        font-size: 0.8rem;
         font-weight: 600;
-        color: #64748B;
+        color: var(--cor-texto-suave);
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }
-    
+
     .info-value {
-        font-size: 1.05rem;
+        font-size: 1.15rem;
         font-weight: 600;
-        color: #0F172A;
+        color: var(--cor-texto);
         margin-bottom: 8px;
     }
-    
+
     .badge-level {
         display: inline-block;
-        padding: 2px 10px;
+        padding: 3px 12px;
         border-radius: 9999px;
-        font-size: 0.8rem;
+        font-size: 0.85rem;
         font-weight: 600;
     }
-    .level-baixo { background-color: #DCFCE7; color: #166534; }
-    .level-medio { background-color: #FEF3C7; color: #92400E; }
-    .level-alto { background-color: #FEE2E2; color: #991B1B; }
-    .level-alta { background-color: #E2E8F0; color: #475569; }
-    
+    .level-baixo { background-color: #E3F2EF; color: var(--cor-secundaria); }
+    .level-medio { background-color: #FCEFD9; color: #92600D; }
+    .level-alto  { background-color: #F8E1E4; color: var(--cor-primaria); }
+    .level-alta  { background-color: #EEF1F4; color: #475569; }
+
     .alert-card {
-        padding: 12px 16px;
+        padding: 14px 18px;
         border-radius: 8px;
         margin-bottom: 12px;
         border-left: 4px solid;
+        font-size: 1rem;
+        position: relative; z-index: 1;
     }
-    .alert-high { background-color: #FEF2F2; border-color: #EF4444; color: #991B1B; }
-    .alert-mod { background-color: #FFFBEB; border-color: #F59E0B; color: #92400E; }
+    .alert-high { background-color: #FBEAEC; border-color: var(--cor-primaria); color: #5E1B26; }
+    .alert-mod  { background-color: #FFF6E9; border-color: #C9821A; color: #7A5209; }
+
+    /* Botões principais usando a cor primária */
+    .stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] {
+        background-color: var(--cor-primaria) !important;
+        border-color: var(--cor-primaria) !important;
+    }
+    .stButton > button[kind="primary"]:hover, .stFormSubmitButton > button[kind="primary"]:hover {
+        background-color: var(--cor-primaria-escura) !important;
+        border-color: var(--cor-primaria-escura) !important;
+    }
+
+    /* --- Triângulos decorativos discretos nas bordas da página --- */
+    .triangulo-decorativo { position: fixed; pointer-events: none; z-index: 0; opacity: 0.06; }
+    .tri-1 { top: -70px; left: -70px; width: 240px; height: 240px; background: var(--cor-primaria); clip-path: polygon(0 0, 100% 0, 0 100%); }
+    .tri-2 { top: -50px; right: -90px; width: 200px; height: 200px; background: var(--cor-secundaria); clip-path: polygon(100% 0, 100% 100%, 0 0); }
+    .tri-3 { bottom: -80px; left: -50px; width: 220px; height: 220px; background: var(--cor-secundaria); clip-path: polygon(0 100%, 100% 100%, 0 0); }
+    .tri-4 { bottom: -60px; right: -70px; width: 210px; height: 210px; background: var(--cor-primaria); clip-path: polygon(100% 100%, 100% 0, 0 100%); }
     </style>
+
+    <div class="triangulo-decorativo tri-1"></div>
+    <div class="triangulo-decorativo tri-2"></div>
+    <div class="triangulo-decorativo tri-3"></div>
+    <div class="triangulo-decorativo tri-4"></div>
+
+    <div class="marca-cabecalho">
+        <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#7A2331" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 21s-7.5-4.9-10-9.3C.4 8.6 2 5 5.6 5c2 0 3.4 1.1 4.4 2.6C11 6.1 12.4 5 14.4 5 18 5 19.6 8.6 22 11.7 19.5 16.1 12 21 12 21z"/>
+        </svg>
+        <svg width="42" height="26" viewBox="0 0 100 30" fill="none" stroke="#0F6E6A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="0,15 20,15 26,4 32,26 38,15 100,15"/>
+        </svg>
+        <div class="marca-textos">
+            <div class="marca-titulo">Ambulatório de Anticoagulação</div>
+            <div class="marca-subtitulo">Acompanhamento clínico de RNI e varfarina</div>
+        </div>
+    </div>
 """, unsafe_allow_html=True)
+
+ICONE_GOTA_SVG = (
+    '<svg width="16" height="19" viewBox="0 0 24 28" fill="none" stroke="#7A2331" '
+    'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" '
+    'style="vertical-align:-3px;margin-right:4px;">'
+    '<path d="M12 2C12 2 5 12.5 5 18a7 7 0 0 0 14 0c0-5.5-7-16-7-16z"/></svg>'
+)
 
 # ==============================================================================
 # 2. BANCO DE DADOS SQLITE (INICIALIZAÇÃO & MIGRAÇÃO)
@@ -280,7 +355,7 @@ def obter_status_paciente(p, historico):
 # ==============================================================================
 # 6. SIDEBAR, NAVEGAÇÃO E EXPORTAR/IMPORTAR PROJETO
 # ==============================================================================
-st.sidebar.markdown("### 🩺 Ambulatório RNI")
+st.sidebar.markdown("### Navegação")
 
 modo_visao = st.sidebar.radio("Navegação:", ["🏠 Visão Geral (Dashboard)", "👤 Ficha do Paciente"], index=0)
 st.sidebar.markdown("---")
@@ -421,7 +496,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             y='Pacientes',
             color='Indicação',
             text='Pacientes',
-            color_discrete_sequence=px.colors.qualitative.Set2
+            color_discrete_sequence=['#7A2331', '#0F6E6A', '#C9821A', '#3B6E91', '#8E7C93', '#A3C4BC']
         )
         fig_ind.update_layout(
             showlegend=False,
@@ -439,7 +514,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             names='Indicação',
             values='Pacientes',
             color='Indicação',
-            color_discrete_sequence=px.colors.qualitative.Set2,
+            color_discrete_sequence=['#7A2331', '#0F6E6A', '#C9821A', '#3B6E91', '#8E7C93', '#A3C4BC'],
             hole=0.4
         )
         fig_ind_pie.update_traces(textinfo='percent+label')
@@ -460,7 +535,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         df_status.columns = ['Status', 'Total']
         fig_pie = px.pie(
             df_status, names='Status', values='Total', color='Status',
-            color_discrete_map={'Apto para Alta': '#10B981', 'Em Melhora': '#F59E0B', 'Precisa de Atenção': '#EF4444', 'Em Alta Terapêutica': '#94A3B8'},
+            color_discrete_map={'Apto para Alta': '#0F6E6A', 'Em Melhora': '#C9821A', 'Precisa de Atenção': '#7A2331', 'Em Alta Terapêutica': '#94A3B8'},
             hole=0.4
         )
         fig_pie.update_traces(textinfo='percent+label')
@@ -473,7 +548,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             df_inter = pd.DataFrame(list(interagentes_dict.items()), columns=['Medicamento', 'Pacientes']).sort_values('Pacientes', ascending=True)
             fig_bar_inter = px.bar(
                 df_inter, x='Pacientes', y='Medicamento', orientation='h',
-                color_discrete_sequence=['#EF4444'], text='Pacientes'
+                color_discrete_sequence=['#7A2331'], text='Pacientes'
             )
             fig_bar_inter.update_layout(margin=dict(t=20, b=20, l=20, r=20), height=300, yaxis_title=None, xaxis_title="Número de Pacientes em Uso")
             st.plotly_chart(fig_bar_inter, use_container_width=True)
@@ -493,7 +568,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             "Faixa Etária": ["Adultos (<60 anos)", "Idosos (60-79 anos)", "Idosos Mais Velhos (80+ anos)"],
             "Pacientes": [faixa_nao_idoso, faixa_idoso, faixa_muito_idoso]
         })
-        fig_idade = px.bar(df_idade, x="Faixa Etária", y="Pacientes", color="Faixa Etária", text="Pacientes", color_discrete_sequence=['#3B82F6', '#F59E0B', '#8B5CF6'])
+        fig_idade = px.bar(df_idade, x="Faixa Etária", y="Pacientes", color="Faixa Etária", text="Pacientes", color_discrete_sequence=['#0F6E6A', '#C9821A', '#7A2331'])
         fig_idade.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20), height=300)
         st.plotly_chart(fig_idade, use_container_width=True)
 
@@ -531,7 +606,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             y="Pacientes", 
             color="Quantidade de Medicamentos", 
             text="Pacientes",
-            color_discrete_sequence=['#10B981', '#3B82F6', '#F59E0B', '#EC4899', '#EF4444']
+            color_discrete_sequence=['#0F6E6A', '#3B8FA6', '#C9821A', '#A14A5A', '#7A2331']
         )
         fig_distribuicao_meds.update_layout(
             showlegend=False, 
@@ -613,7 +688,7 @@ else:
     ttr_valor = calcular_ttr_rosendaal(historico_rni, min_alvo, max_alvo)
     ttr_direto, exames_na_faixa, total_exames = calcular_ttr_direto(historico_rni, min_alvo, max_alvo)
 
-    cor_ttr, bg_badge, status_ttr = ("#64748B", "#F1F5F9", "Alta") if em_alta else (("#10B981", "#ECFDF5", "Estável") if ttr_valor >= 70.0 else (("#F59E0B", "#FFFBEB", "Alerta") if ttr_valor >= 60.0 else ("#EF4444", "#FEF2F2", "Crítico")))
+    cor_ttr, bg_badge, status_ttr = ("#64748B", "#F1F5F9", "Alta") if em_alta else (("#0F6E6A", "#E6F5F4", "Estável") if ttr_valor >= 70.0 else (("#C9821A", "#FFF6E9", "Alerta") if ttr_valor >= 60.0 else ("#7A2331", "#FBEAEC", "Crítico")))
     level_class = "level-alta" if em_alta else ("level-baixo" if p['level'] == "Baixo" else "level-alto" if p['level'] == "Alto" else "level-medio")
 
     tag_idoso = " (Idoso 80+)" if p['age'] >= 80 else (" (Idoso 60+)" if p['age'] >= 60 else "")
@@ -670,11 +745,11 @@ else:
 
             def classificar_ponto(v):
                 if min_alvo <= v <= max_alvo:
-                    return '#10B981'
+                    return '#0F6E6A'
                 elif v < min_alvo:
-                    return '#EF4444'
+                    return '#C9821A'
                 else:
-                    return '#991B1B'
+                    return '#7A2331'
 
             colors = [classificar_ponto(v) for v in df_chart['value']]
 
@@ -690,16 +765,16 @@ else:
 
             layout_config = {
                 "template": "plotly_white",
-                "font": {"family": "Inter, sans-serif", "size": 12, "color": "#1E293B"},
+                "font": {"family": "Inter, sans-serif", "size": 13, "color": "#14181F"},
                 "margin": {"l": 40, "r": 20, "t": 30, "b": 40},
                 "height": 300,
                 "hovermode": "x unified",
                 "xaxis": {"showgrid": True, "gridcolor": "#F1F5F9", "linecolor": "#CBD5E1"},
                 "yaxis": {"showgrid": True, "gridcolor": "#F1F5F9", "linecolor": "#CBD5E1", "zeroline": False},
                 "shapes": [
-                    {"type": "rect", "xref": "paper", "yref": "y", "x0": 0, "x1": 1, "y0": min_alvo, "y1": max_alvo, "fillcolor": "rgba(16, 185, 129, 0.20)", "line": {"width": 0}, "layer": "below"},
-                    {"type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1, "y0": min_alvo, "y1": min_alvo, "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}},
-                    {"type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1, "y0": max_alvo, "y1": max_alvo, "line": {"color": "#10B981", "width": 1.5, "dash": "dot"}}
+                    {"type": "rect", "xref": "paper", "yref": "y", "x0": 0, "x1": 1, "y0": min_alvo, "y1": max_alvo, "fillcolor": "rgba(15, 110, 106, 0.15)", "line": {"width": 0}, "layer": "below"},
+                    {"type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1, "y0": min_alvo, "y1": min_alvo, "line": {"color": "#0F6E6A", "width": 1.5, "dash": "dot"}},
+                    {"type": "line", "xref": "paper", "yref": "y", "x0": 0, "x1": 1, "y0": max_alvo, "y1": max_alvo, "line": {"color": "#0F6E6A", "width": 1.5, "dash": "dot"}}
                 ]
             }
 
@@ -851,9 +926,9 @@ else:
                     st.write(f"📅 **{item['date']}**")
                 with c_val:
                     if item['status'] == 'Falta' or item['value'] is None:
-                        st.markdown(f"⚠️ <span style='color: #DC2626; font-weight: 600;'>PACIENTE FALTOU À CONSULTA</span><br><small style='color: #64748B;'>Obs: {item['obs'] or 'Sem registro'}</small>", unsafe_allow_html=True)
+                        st.markdown(f"⚠️ <span style='color: #7A2331; font-weight: 600;'>PACIENTE FALTOU À CONSULTA</span><br><small style='color: #4B5563;'>Obs: {item['obs'] or 'Sem registro'}</small>", unsafe_allow_html=True)
                     else:
-                        st.write(f"🩸 **RNI: {item['value']}**")
+                        st.markdown(f"{ICONE_GOTA_SVG}**RNI: {item['value']}**", unsafe_allow_html=True)
                 with c_edit:
                     if item['value'] is not None:
                         with st.popover("✏️ Editar"):
