@@ -435,7 +435,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     lista_pacientes = [dict(p) for p in pacientes_raw]
     
     total_pacientes = len(lista_pacientes)
-    idosos = sum(1 for p in lista_pacientes if p['age'] >= 60)
+    idosos = sum(1 for p in lista_pacientes if 60 <= p['age'] < 79)
     idosos_mais_velhos = sum(1 for p in lista_pacientes if p['age'] >= 80)
     com_apoio = sum(1 for p in lista_pacientes if p['needs_support'] == "Sim")
     
@@ -465,7 +465,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     # METRICAS RÁPIDAS
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Total de Pacientes", total_pacientes)
-    m2.metric("Idosos (≥ 60 anos)", f"{idosos} ({idosos/total_pacientes*100:.0f}%)")
+    m2.metric("Idosos (≥ 60 anos e < 70 anos)", f"{idosos} ({idosos/total_pacientes*100:.0f}%)" if total_pacientes > 0 else f"{idosos} (0%)"
     m3.metric("Very Elderly (≥ 80 anos)", f"{idosos_mais_velhos} ({idosos_mais_velhos/total_pacientes*100:.0f}%)")
     m4.metric("Polimedicados (≥ 5 meds)", f"{polimedicados} ({polimedicados/total_pacientes*100:.0f}%)")
     
