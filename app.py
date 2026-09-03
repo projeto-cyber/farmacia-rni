@@ -465,8 +465,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     # METRICAS RÁPIDAS
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Total de Pacientes", total_pacientes)
-    m2.metric("Idosos (≥ 60 anos e < 70 anos)", f"{idosos} ({idosos/total_pacientes*100:.0f}%)" if total_pacientes > 0 else f"{idosos} (0%)"
-    m3.metric("Very Elderly (≥ 80 anos)", f"{idosos_mais_velhos} ({idosos_mais_velhos/total_pacientes*100:.0f}%)")
+    m2.metric("Idosos (≥ 60 anos e < 70 anos)", f"{idosos} ({idosos/total_pacientes*100:.0f}%)" if total_pacientes > 0 else f"{idosos} (0%)")
+    m3.metric("Very Elderly (≥ 80 anos)", f"{idosos_mais_velhos} ({idosos_mais_velhos/total_pacientes*100:.0f}%)" if total_pacientes > 0 else f"{idosos_mais_velhos} (0%)")
     m4.metric("Polimedicados (≥ 5 meds)", f"{polimedicados} ({polimedicados/total_pacientes*100:.0f}%)")
     
     # Contar indicações
@@ -562,7 +562,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         st.subheader("👴 Faixas Etárias Populacionais")
         faixa_nao_idoso = sum(1 for p in lista_pacientes if p['age'] < 60)
         faixa_idoso = sum(1 for p in lista_pacientes if 60 <= p['age'] < 80)
-        faixa_muito_idoso = sum(1 for p in lista_pacientes if p['age'] >= 80)
+        faixa_idoso_mais_velho = sum(1 for p in lista_pacientes if p['age'] >= 80)
         
         df_idade = pd.DataFrame({
             "Faixa Etária": ["Adultos (<60 anos)", "Idosos (60-79 anos)", "Idosos Mais Velhos (80+ anos)"],
@@ -575,7 +575,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     with c_g4:
         st.subheader("💊 Distribuição por Quantidade de Medicamentos")
         
-        # Contar pacientes por quantidade de medicamentos
+        # Contar pacientes 
+        pacientes_apenas_Varfarina = 0
         pacientes_1_med = 0
         pacientes_2_meds = 0
         pacientes_3_meds = 0
@@ -584,6 +585,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         
         for p in lista_pacientes:
             qtd_meds_paciente = contar_medicamentos(p['meds'] or "")
+            if qtd_meds_paciente ==0
+                pacientes_apenas_Varfarina
             if qtd_meds_paciente == 1:
                 pacientes_1_med += 1
             elif qtd_meds_paciente == 2:
@@ -596,8 +599,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
                 pacientes_5_ou_mais += 1
         
         df_distribuicao_meds = pd.DataFrame({
-            "Quantidade de Medicamentos": ["1 medicamento", "2 medicamentos", "3 medicamentos", "4 medicamentos", "5 ou mais medicamentos"],
-            "Pacientes": [pacientes_1_med, pacientes_2_meds, pacientes_3_meds, pacientes_4_meds, pacientes_5_ou_mais]
+            "Quantidade de Medicamentos": ["Apenas Varfarina", "1 medicamento", "2 medicamentos", "3 medicamentos", "4 medicamentos", "5 ou mais medicamentos"],
+            "Pacientes": [pacientes_apenas_Varfarina, pacientes_1_med, pacientes_2_meds, pacientes_3_meds, pacientes_4_meds, pacientes_5_ou_mais]
         })
         
         fig_distribuicao_meds = px.bar(
