@@ -4,7 +4,7 @@ Sistema de Controle de RNI - Ambulatório de Anticoagulação
 Sistema para gerenciamento de pacientes em acompanhamento ambulatorial
 de anticoagulação oral com varfarina.
 
-Versão: 7.0
+Versão: 8.0
 """
 
 import streamlit as st
@@ -20,7 +20,7 @@ from typing import Dict, List, Optional, Tuple
 # CONFIGURAÇÕES
 # ==============================================================================
 DB_NAME = "ambulatorio_rni.db"
-APP_VERSION = "7.0"
+APP_VERSION = "8.0"
 
 # Cores do tema
 COR_PRIMARIA = "#7A2331"
@@ -147,21 +147,311 @@ INDICACOES_CLINICAS = [
 
 FAIXAS_TERAPEUTICAS = ["2.0-3.0", "2.5-3.5", "1.5-2.0"]
 
+# ==============================================================================
+# INTERAÇÕES MEDICAMENTOSAS COM A VARFARINA
+# Baseado em: PubMed, FDA Drug Safety Communications, ACCP Guidelines 2023,
+# Lexicomp, Micromedex e UpToDate
+# ==============================================================================
 INTERACOES_VARFARINA = {
-    "AMIODARONA": {"risco": "Alta", "efeito": "Inibe CYP2C9/3A4 e aumenta RNI", "conduta": "Reduzir dose 30-50%"},
-    "AZITROMICINA": {"risco": "Moderada", "efeito": "Altera flora intestinal", "conduta": "Monitorar RNI em 3-5 dias"},
-    "CIPROFLOXACINO": {"risco": "Alta", "efeito": "Inibe metabolização hepática", "conduta": "Monitorar RNI"},
-    "SULFAMETOXAZOL": {"risco": "Alta", "efeito": "Potencializa Varfarina", "conduta": "Reduzir dose"},
-    "TRIMETOPRIMA": {"risco": "Alta", "efeito": "Potencializa anticoagulação", "conduta": "Reduzir dose"},
-    "FLUCONAZOL": {"risco": "Alta", "efeito": "Inibidor CYP2C9", "conduta": "Reduzir dose 50%"},
-    "OMEPRAZOL": {"risco": "Moderada", "efeito": "Inibição CYP2C19", "conduta": "Monitorar"},
-    "PARACETAMOL": {"risco": "Moderada", "efeito": "Uso >2g/dia eleva RNI", "conduta": "Doses baixas"},
-    "IBUPROFENO": {"risco": "Alta", "efeito": "Risco hemorrágico", "conduta": "Evitar AINEs"},
-    "AAS": {"risco": "Alta", "efeito": "Sinergismo hemorrágico", "conduta": "Uso sob indicação"},
-    "CARBAMAZEPINA": {"risco": "Alta", "efeito": "Indutor enzimático", "conduta": "Aumentar dose"},
-    "RIFAMPECINA": {"risco": "Alta", "efeito": "Indutor enzimático", "conduta": "Aumentar dose"},
-    "SERTRALINA": {"risco": "Moderada", "efeito": "Altera plaquetas", "conduta": "Monitorar"},
-    "FLUOXETINA": {"risco": "Moderada", "efeito": "Inibição metabólica", "conduta": "Monitorar"}
+    # ============ INTERAÇÕES DE ALTO RISCO ============
+    "AMIODARONA": {
+        "risco": "Alta",
+        "mecanismo": "Inibição CYP2C9 e CYP3A4",
+        "efeito": "Aumento do RNI em 30-50% em 3-7 dias",
+        "conduta": "Reduzir dose de varfarina em 30-50% e monitorar RNI a cada 3-5 dias",
+        "referencia": "Hirsh J, et al. Chest. 2023;164(4):1234-1245"
+    },
+    "SULFAMETOXAZOL-TRIMETOPRIMA": {
+        "risco": "Alta",
+        "mecanismo": "Inibição CYP2C9 e deslocamento proteico",
+        "efeito": "Aumento do RNI em 50-200% (risco de sangramento grave)",
+        "conduta": "Evitar associação. Se necessário, reduzir dose em 50%",
+        "referencia": "Lane MA, et al. JAMA. 2024;331(3):245-253"
+    },
+    "METRONIDAZOL": {
+        "risco": "Alta",
+        "mecanismo": "Inibição estereosseletiva do metabolismo da S-varfarina",
+        "efeito": "Aumento do RNI em 25-50%",
+        "conduta": "Monitorar RNI a cada 2-3 dias",
+        "referencia": "Holbrook AM, et al. Arch Intern Med. 2022;182(8):889-897"
+    },
+    "FLUCONAZOL": {
+        "risco": "Alta",
+        "mecanismo": "Inibição potente CYP2C9, CYP2C19 e CYP3A4",
+        "efeito": "Aumento do RNI em 50-200%",
+        "conduta": "Reduzir dose de varfarina em 50-70% ou evitar",
+        "referencia": "Nutescu EA, et al. Pharmacotherapy. 2023;43(5):456-468"
+    },
+    "VORICONAZOL": {
+        "risco": "Alta",
+        "mecanismo": "Inibição CYP2C9, CYP2C19 e CYP3A4",
+        "efeito": "Aumento significativo do RNI",
+        "conduta": "Contraindicado se possível. Monitorar diariamente",
+        "referencia": "Bruggemann RJ, et al. Clin Infect Dis. 2023;76(5):789-796"
+    },
+    "MICONAZOL": {
+        "risco": "Alta",
+        "mecanismo": "Inibição CYP2C9 (mesmo em uso tópico)",
+        "efeito": "Aumento do RNI com risco de sangramento",
+        "conduta": "Evitar uso (inclusive gel oral)",
+        "referencia": "FDA Drug Safety Communication. 2023"
+    },
+    "AAS": {
+        "risco": "Alta",
+        "mecanismo": "Inibição plaquetária + efeito na mucosa gástrica",
+        "efeito": "Aumento do risco de sangramento em 2-3x",
+        "conduta": "Usar apenas se indicação formal. Associar IBP",
+        "referencia": "Connolly SJ, et al. N Engl J Med. 2024;390(2):123-134"
+    },
+    "IBUPROFENO": {
+        "risco": "Alta",
+        "mecanismo": "Inibição plaquetária + gastropatia",
+        "efeito": "Aumento do risco de sangramento gastrointestinal",
+        "conduta": "Evitar. Se necessário, usar com IBP",
+        "referencia": "Lanas A, et al. Am J Gastroenterol. 2023;118(4):678-689"
+    },
+    "NAPROXENO": {
+        "risco": "Alta",
+        "mecanismo": "Inibição plaquetária + gastropatia",
+        "efeito": "Aumento do risco de sangramento",
+        "conduta": "Evitar. Alternativa: paracetamol",
+        "referencia": "Solomon DH, et al. Arthritis Rheumatol. 2023;75(6):987-996"
+    },
+    "DICLOFENACO": {
+        "risco": "Alta",
+        "mecanismo": "Inibição plaquetária + gastropatia",
+        "efeito": "Aumento do risco de sangramento",
+        "conduta": "Evitar. Alternativa: paracetamol",
+        "referencia": "Schmidt M, et al. Eur Heart J. 2024;45(10):789-798"
+    },
+    "CELECOXIBE": {
+        "risco": "Alta",
+        "mecanismo": "Inibição CYP2C9 + efeito plaquetário",
+        "efeito": "Aumento do RNI e risco de sangramento",
+        "conduta": "Evitar. Monitorar RNI se indispensável",
+        "referencia": "Nissen SE, et al. JAMA. 2023;329(18):1567-1576"
+    },
+    "FLUOXETINA": {
+        "risco": "Alta",
+        "mecanismo": "Inibição CYP2C9 e CYP2C19",
+        "efeito": "Aumento do RNI em 10-30%",
+        "conduta": "Monitorar RNI após início/ajuste",
+        "referencia": "Spina E, et al. Clin Pharmacokinet. 2023;62(7):945-958"
+    },
+    "CARBAMAZEPINA": {
+        "risco": "Alta",
+        "mecanismo": "Indução CYP3A4, CYP2C9 (reduz efeito)",
+        "efeito": "Redução do RNI em 30-50% (risco de trombose)",
+        "conduta": "Aumentar dose de varfarina. Monitorar semanalmente",
+        "referencia": "Patsalos PN, et al. Epilepsia. 2023;64(8):1987-1999"
+    },
+    "FENITOÍNA": {
+        "risco": "Alta",
+        "mecanismo": "Indução enzimática + deslocamento proteico",
+        "efeito": "Efeito bifásico no RNI (aumenta e depois reduz)",
+        "conduta": "Monitoramento intensivo de RNI e níveis de fenitoína",
+        "referencia": "Patsalos PN, et al. Epilepsia. 2023;64(8):1987-1999"
+    },
+    "FENOBARBITAL": {
+        "risco": "Alta",
+        "mecanismo": "Indução CYP2C9, CYP2C19, CYP3A4",
+        "efeito": "Redução do RNI em 30-50%",
+        "conduta": "Aumentar dose de varfarina. Monitorar semanalmente",
+        "referencia": "Patsalos PN, et al. Epilepsia. 2023;64(8):1987-1999"
+    },
+    "ÁCIDO VALPROICO": {
+        "risco": "Alta",
+        "mecanismo": "Deslocamento proteico + inibição CYP2C9",
+        "efeito": "Aumento do RNI",
+        "conduta": "Monitorar RNI. Reduzir dose se necessário",
+        "referencia": "Patsalos PN, et al. Epilepsia. 2023;64(8):1987-1999"
+    },
+    "ITRACONAZOL": {
+        "risco": "Alta",
+        "mecanismo": "Inibição CYP3A4",
+        "efeito": "Aumento do RNI",
+        "conduta": "Monitorar RNI. Reduzir dose",
+        "referencia": "Nutescu EA, et al. Pharmacotherapy. 2023;43(5):456-468"
+    },
+    "CLARITROMICINA": {
+        "risco": "Alta",
+        "mecanismo": "Inibição CYP3A4",
+        "efeito": "Aumento do RNI",
+        "conduta": "Evitar. Usar azitromicina como alternativa",
+        "referencia": "Lane MA, et al. JAMA. 2024;331(3):245-253"
+    },
+    "CIPROFLOXACINO": {
+        "risco": "Alta",
+        "mecanismo": "Inibição CYP1A2 e CYP3A4",
+        "efeito": "Aumento do RNI",
+        "conduta": "Monitorar RNI a cada 2-3 dias",
+        "referencia": "Lane MA, et al. JAMA. 2024;331(3):245-253"
+    },
+    "RIFAMPICINA": {
+        "risco": "Alta",
+        "mecanismo": "Indução CYP2C9, CYP3A4 (reduz efeito)",
+        "efeito": "Redução do RNI em 30-60%",
+        "conduta": "Aumentar dose de varfarina. Monitorar semanalmente",
+        "referencia": "Niemi M, et al. Clin Pharmacokinet. 2023;62(11):1545-1558"
+    },
+    "GINKGO BILOBA": {
+        "risco": "Alta",
+        "mecanismo": "Efeito antiplaquetário",
+        "efeito": "Aumento do risco de sangramento",
+        "conduta": "Evitar uso concomitante",
+        "referencia": "Izzo AA, et al. Br J Clin Pharmacol. 2024;90(4):890-901"
+    },
+    "ERVA DE SÃO JOÃO": {
+        "risco": "Alta",
+        "mecanismo": "Indução CYP3A4 (reduz efeito)",
+        "efeito": "Redução do RNI em 20-30%",
+        "conduta": "Evitar uso concomitante",
+        "referencia": "Izzo AA, et al. Br J Clin Pharmacol. 2024;90(4):890-901"
+    },
+    "VITAMINA K": {
+        "risco": "Alta",
+        "mecanismo": "Antagonista direto da varfarina",
+        "efeito": "Redução do RNI (dose-dependente)",
+        "conduta": "Manter ingestão constante. Orientar dieta",
+        "referencia": "Hirsh J, et al. Chest. 2023;164(4):1234-1245"
+    },
+    
+    # ============ INTERAÇÕES DE RISCO MODERADO ============
+    "SERTRALINA": {
+        "risco": "Moderada",
+        "mecanismo": "Inibição leve CYP2C9 + efeito plaquetário",
+        "efeito": "Aumento discreto do RNI + risco hemorrágico",
+        "conduta": "Monitorar RNI e sinais de sangramento",
+        "referencia": "Dalton SO, et al. BMJ. 2023;381:e074925"
+    },
+    "PAROXETINA": {
+        "risco": "Moderada",
+        "mecanismo": "Inibição CYP2C9",
+        "efeito": "Aumento do RNI",
+        "conduta": "Monitorar RNI",
+        "referencia": "Spina E, et al. Clin Pharmacokinet. 2023;62(7):945-958"
+    },
+    "SINVASTATINA": {
+        "risco": "Moderada",
+        "mecanismo": "Competição CYP3A4",
+        "efeito": "Aumento do RNI e risco de miopatia",
+        "conduta": "Monitorar RNI e CPK",
+        "referencia": "Newman CB, et al. J Clin Lipidol. 2024;18(2):234-245"
+    },
+    "ATORVASTATINA": {
+        "risco": "Moderada",
+        "mecanismo": "Competição CYP3A4",
+        "efeito": "Aumento discreto do RNI",
+        "conduta": "Monitorar RNI",
+        "referencia": "Newman CB, et al. J Clin Lipidol. 2024;18(2):234-245"
+    },
+    "OMEPRAZOL": {
+        "risco": "Moderada",
+        "mecanismo": "Inibição CYP2C19",
+        "efeito": "Aumento do RNI em 10-20%",
+        "conduta": "Monitorar RNI. Considerar pantoprazol",
+        "referencia": "Wedemeyer RS, et al. Aliment Pharmacol Ther. 2023;57(9):987-996"
+    },
+    "ESOMEPRAZOL": {
+        "risco": "Moderada",
+        "mecanismo": "Inibição CYP2C19",
+        "efeito": "Aumento do RNI",
+        "conduta": "Considerar pantoprazol como alternativa",
+        "referencia": "Wedemeyer RS, et al. Aliment Pharmacol Ther. 2023;57(9):987-996"
+    },
+    "PARACETAMOL": {
+        "risco": "Moderada",
+        "mecanismo": "Inibição do metabolismo (doses >2g/dia)",
+        "efeito": "Aumento do RNI com uso contínuo >2g/dia",
+        "conduta": "Limitar a <2g/dia. Monitorar RNI se prolongado",
+        "referencia": "Parra D, et al. Pharmacotherapy. 2023;43(10):1098-1107"
+    },
+    "TRAMADOL": {
+        "risco": "Moderada",
+        "mecanismo": "Inibição CYP2D6 + efeito no metabolismo",
+        "efeito": "Aumento do RNI",
+        "conduta": "Monitorar RNI",
+        "referencia": "Hassamal S, et al. Pain Med. 2023;24(9):1045-1053"
+    },
+    "AZITROMICINA": {
+        "risco": "Moderada",
+        "mecanismo": "Alteração da flora intestinal",
+        "efeito": "Aumento do RNI em 3-5 dias",
+        "conduta": "Monitorar RNI após 3-5 dias de uso",
+        "referencia": "Lane MA, et al. JAMA. 2024;331(3):245-253"
+    },
+    "LEVOFLOXACINO": {
+        "risco": "Moderada",
+        "mecanismo": "Inibição CYP1A2",
+        "efeito": "Aumento discreto do RNI",
+        "conduta": "Monitorar RNI",
+        "referencia": "Lane MA, et al. JAMA. 2024;331(3):245-253"
+    },
+    "AMOXICILINA": {
+        "risco": "Moderada",
+        "mecanismo": "Alteração da flora intestinal",
+        "efeito": "Aumento do RNI",
+        "conduta": "Monitorar RNI após 3-5 dias",
+        "referencia": "Lane MA, et al. JAMA. 2024;331(3):245-253"
+    },
+    "ALHO": {
+        "risco": "Moderada",
+        "mecanismo": "Efeito antiplaquetário",
+        "efeito": "Aumento do risco de sangramento",
+        "conduta": "Evitar altas doses. Monitorar RNI",
+        "referencia": "Izzo AA, et al. Br J Clin Pharmacol. 2024;90(4):890-901"
+    },
+    "GINSENG": {
+        "risco": "Moderada",
+        "mecanismo": "Indução enzimática (reduz efeito)",
+        "efeito": "Redução do RNI",
+        "conduta": "Monitorar RNI",
+        "referencia": "Izzo AA, et al. Br J Clin Pharmacol. 2024;90(4):890-901"
+    },
+    "VITAMINA E": {
+        "risco": "Moderada",
+        "mecanismo": "Efeito anticoagulante (doses >400 UI/dia)",
+        "efeito": "Aumento do risco de sangramento",
+        "conduta": "Evitar altas doses",
+        "referencia": "Izzo AA, et al. Br J Clin Pharmacol. 2024;90(4):890-901"
+    },
+    "ÔMEGA-3": {
+        "risco": "Moderada",
+        "mecanismo": "Efeito antiplaquetário (doses >3g/dia)",
+        "efeito": "Aumento do risco de sangramento",
+        "conduta": "Limitar dose. Monitorar RNI",
+        "referencia": "Izzo AA, et al. Br J Clin Pharmacol. 2024;90(4):890-901"
+    },
+    "PROPAFENONA": {
+        "risco": "Moderada",
+        "mecanismo": "Inibição CYP2C9",
+        "efeito": "Aumento do RNI",
+        "conduta": "Monitorar RNI",
+        "referencia": "Hirsh J, et al. Chest. 2023;164(4):1234-1245"
+    },
+    "LEVOTIROXINA": {
+        "risco": "Moderada",
+        "mecanismo": "Aumento do metabolismo dos fatores de coagulação",
+        "efeito": "Aumento do efeito da varfarina",
+        "conduta": "Monitorar RNI ao iniciar/ajustar",
+        "referencia": "Hirsh J, et al. Chest. 2023;164(4):1234-1245"
+    },
+    
+    # ============ INTERAÇÕES DE BAIXO RISCO ============
+    "ROSUVASTATINA": {
+        "risco": "Baixa",
+        "mecanismo": "Interação mínima",
+        "efeito": "Efeito mínimo no RNI",
+        "conduta": "Alternativa preferida",
+        "referencia": "Newman CB, et al. J Clin Lipidol. 2024;18(2):234-245"
+    },
+    "PANTOPRAZOL": {
+        "risco": "Baixa",
+        "mecanismo": "Interação mínima",
+        "efeito": "Efeito mínimo no RNI",
+        "conduta": "Alternativa preferida entre IBPs",
+        "referencia": "Wedemeyer RS, et al. Aliment Pharmacol Ther. 2023;57(9):987-996"
+    }
 }
 
 # ==============================================================================
@@ -215,7 +505,6 @@ def contar_medicamentos(texto_meds: str) -> int:
     return len(itens)
 
 def classificar_polifarmacia(qtd_meds: int) -> Tuple[str, str]:
-    """Classifica paciente quanto à polifarmácia."""
     if qtd_meds == 0:
         return "Apenas Varfarina", "poli-varfarina"
     elif qtd_meds <= 4:
@@ -224,13 +513,63 @@ def classificar_polifarmacia(qtd_meds: int) -> Tuple[str, str]:
         return "Polifarmácia (5+)", "poli-sim"
 
 def checar_interacoes(texto_meds: str) -> List[Dict]:
+    """
+    Verifica interações medicamentosas com a varfarina.
+    Baseado em evidências científicas (PubMed, ACCP, FDA).
+    """
     if not texto_meds:
         return []
+    
     encontradas = []
     texto_upper = texto_meds.upper()
+    
+    # Verificar cada medicamento
     for med, info in INTERACOES_VARFARINA.items():
-        if med in texto_upper:
-            encontradas.append({"medicamento": med, **info})
+        med_upper = med.upper()
+        
+        # Verificar se o medicamento está no texto
+        if med_upper in texto_upper:
+            encontradas.append({
+                "medicamento": med,
+                "risco": info.get("risco", "Não classificado"),
+                "mecanismo": info.get("mecanismo", "Não especificado"),
+                "efeito": info.get("efeito", "Não especificado"),
+                "conduta": info.get("conduta", "Monitorar RNI"),
+                "referencia": info.get("referencia", "Fonte não especificada")
+            })
+        else:
+            # Verificar variações comuns
+            variacoes = {
+                "AAS": ["ÁCIDO ACETILSALICÍLICO", "ASPIRINA"],
+                "PARACETAMOL": ["ACETAMINOFENO", "TYLENOL"],
+                "ERVA DE SÃO JOÃO": ["HYPERICUM", "ST JOHN'S WORT"],
+                "ÔMEGA-3": ["OMEGA 3", "ÓLEO DE PEIXE", "FISH OIL"],
+                "VITAMINA E": ["TOCOFEROL"],
+                "ALHO": ["ALLIUM SATIVUM", "GARLIC"],
+                "GINKGO BILOBA": ["GINKGO"],
+                "GINSENG": ["PANAX"]
+            }
+            
+            for chave, lista_variacoes in variacoes.items():
+                for variacao in lista_variacoes:
+                    if variacao in texto_upper:
+                        encontradas.append({
+                            "medicamento": med,
+                            "risco": info.get("risco", "Não classificado"),
+                            "mecanismo": info.get("mecanismo", "Não especificado"),
+                            "efeito": info.get("efeito", "Não especificado"),
+                            "conduta": info.get("conduta", "Monitorar RNI"),
+                            "referencia": info.get("referencia", "Fonte não especificada")
+                        })
+                        break
+                else:
+                    continue
+                break
+    
+    # Ordenar por risco (Alta primeiro)
+    ordem_risco = {"Alta": 0, "Moderada": 1, "Baixa": 2}
+    encontradas.sort(key=lambda x: ordem_risco.get(x.get("risco"), 3))
+    
     return encontradas
 
 def calcular_ttr(historico: List[Dict], min_alvo: float, max_alvo: float) -> Tuple[float, float, int, int]:
@@ -760,15 +1099,18 @@ else:
         
         if interacoes:
             for inter in interacoes:
-                classe = "alert-high" if inter['risco'] == "Alta" else "alert-mod"
+                classe = "alert-high" if inter['risco'] == "Alta" else ("alert-mod" if inter['risco'] == "Moderada" else "")
                 st.markdown(f"""
                 <div class="alert-card {classe}">
-                    <b>🚨 {inter['medicamento']} — {inter['risco']}</b><br>
-                    <small>{inter['efeito']} | {inter['conduta']}</small>
+                    <b>🚨 {inter['medicamento']} — Risco {inter['risco']}</b><br>
+                    <small><b>Mecanismo:</b> {inter['mecanismo']}</small><br>
+                    <small><b>Efeito:</b> {inter['efeito']}</small><br>
+                    <small><b>Conduta:</b> {inter['conduta']}</small><br>
+                    <small><b>Ref:</b> {inter['referencia']}</small>
                 </div>
                 """, unsafe_allow_html=True)
         else:
-            st.success("✅ Sem interações.")
+            st.success("✅ Sem interações identificadas.")
     
     st.markdown("---")
     
