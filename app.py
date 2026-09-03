@@ -58,7 +58,7 @@ st.markdown("""
     .marca-titulo { font-size: 1.5rem; font-weight: 700; color: var(--cor-texto); }
     .marca-subtitulo { font-size: 0.95rem; color: var(--cor-texto-suave); }
 
-    .patient-card {
+    .patient-card, .flash-card {
         background: #FFFFFF;
         border: 1px solid var(--cor-borda);
         border-radius: 12px;
@@ -66,6 +66,14 @@ st.markdown("""
         box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
         margin-bottom: 20px;
         position: relative; z-index: 1;
+    }
+
+    .flash-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .flash-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
     }
 
     .info-label {
@@ -105,21 +113,6 @@ st.markdown("""
     }
     .alert-high { background-color: #FBEAEC; border-color: var(--cor-primaria); color: #5E1B26; }
     .alert-mod  { background-color: #FFF6E9; border-color: #C9821A; color: #7A5209; }
-
-    /* Flash Cards */
-    .flash-card {
-        background: #FFFFFF;
-        border: 1px solid var(--cor-borda);
-        border-radius: 10px;
-        padding: 15px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
-        margin-bottom: 12px;
-        transition: transform 0.2s;
-    }
-    .flash-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
-    }
 
     .stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] {
         background-color: var(--cor-primaria) !important;
@@ -164,7 +157,44 @@ ICONE_GOTA_SVG = (
 )
 
 # ==============================================================================
-# 2. BANCO DE DADOS SQLITE (INICIALIZAÇÃO & MIGRAÇÃO)
+# 2. LISTA DE INDICAÇÕES CLÍNICAS PARA USO DE VARFARINA
+# ==============================================================================
+INDICACOES_CLINICAS = [
+    "Fibrilação Atrial",
+    "Flutter Atrial",
+    "TVP/EP (Tromboembolismo Venoso)",
+    "Prótese Valvar Metálica",
+    "Prótese Valvar Biológica",
+    "Trombose Venosa Profunda (TVP)",
+    "Embolia Pulmonar (EP)",
+    "Acidente Vascular Cerebral (AVC) Cardioembólico",
+    "Tromboembolismo Recorrente",
+    "Síndrome Antifosfolípide (SAF)",
+    "Trombofilia Hereditária",
+    "Cardiomiopatia Dilatada",
+    "Infarto Agudo do Miocárdio (IAM) com Trombo",
+    "Aneurisma de Ventrículo Esquerdo",
+    "Trombo Intracardíaco",
+    "Valvopatia Reumática",
+    "Estenose Mitral",
+    "Trombose de Prótese Valvar",
+    "Trombose Arterial",
+    "Trombose Venosa Cerebral",
+    "Trombose de Veia Porta",
+    "Trombose de Veia Mesentérica",
+    "Trombose de Veia Renal",
+    "Trombose de Veia Hepática (Síndrome de Budd-Chiari)",
+    "Prevenção de Tromboembolismo em Cirurgia Cardíaca",
+    "Prevenção de Tromboembolismo em Cirurgia Ortopédica",
+    "Fibrilação Ventricular",
+    "Taquicardia Atrial",
+    "Embolia Sistêmica",
+    "Trombose de Acesso Vascular para Hemodiálise",
+    "Outra"
+]
+
+# ==============================================================================
+# 3. BANCO DE DADOS SQLITE (INICIALIZAÇÃO & MIGRAÇÃO)
 # ==============================================================================
 DB_NAME = "ambulatorio_rni.db"
 
@@ -218,7 +248,7 @@ def verificar_paciente_existente(nome):
     return paciente is not None
 
 # ==============================================================================
-# 3. FUNÇÕES DE EXPORTAR E IMPORTAR PROJETO (BACKUP / RESTORE)
+# 4. FUNÇÕES DE EXPORTAR E IMPORTAR PROJETO (BACKUP / RESTORE)
 # ==============================================================================
 def exportar_projeto_json():
     conn = get_db_connection()
@@ -268,7 +298,7 @@ def importar_projeto_json(conteudo_json):
         return False, f"Erro ao importar arquivo: {str(e)}"
 
 # ==============================================================================
-# 4. BANCO DE INTERAÇÕES MEDICAMENTOSAS COM A VARFARINA
+# 5. BANCO DE INTERAÇÕES MEDICAMENTOSAS COM A VARFARINA
 # ==============================================================================
 INTERACOES_VARFARINA = {
     "AMIODARONA": {"risco": "Alta", "efeito": "Inibe CYP2C9/3A4 e aumenta expressivamente o RNI com risco de hemorragia.", "conduta": "Reduzir dose da Varfarina em 30% a 50% e monitorar RNI semanalmente."},
@@ -310,7 +340,7 @@ def contar_medicamentos(texto_meds):
     return len(itens)
 
 # ==============================================================================
-# 5. CÁLCULOS TTR E UTILITÁRIOS
+# 6. CÁLCULOS TTR E UTILITÁRIOS
 # ==============================================================================
 def calcular_ttr_rosendaal(historico, min_alvo, max_alvo):
     historico_rni = [e for e in historico if e.get('value') is not None]
@@ -371,7 +401,7 @@ def obter_status_paciente(p, historico):
         return 'Precisa de Atenção'
 
 # ==============================================================================
-# 6. SIDEBAR, NAVEGAÇÃO E EXPORTAR/IMPORTAR PROJETO
+# 7. SIDEBAR, NAVEGAÇÃO E EXPORTAR/IMPORTAR PROJETO
 # ==============================================================================
 st.sidebar.markdown("### Navegação")
 
@@ -384,7 +414,17 @@ with st.sidebar.expander("➕ Cadastrar Novo Paciente"):
         novo_nome = st.text_input("Nome Completo:")
         nova_idade = st.number_input("Idade:", min_value=1, max_value=120, value=65)
         novo_contato = st.text_input("Telefone/Contato:")
-        nova_indicacao = st.selectbox("Indicação Clínica:", ["Fibrilação Atrial", "TVP/EP", "Prótese Valvar Metálica", "Outra"])
+        
+        # Seleção de indicação clínica
+        nova_indicacao = st.selectbox("Indicação Clínica:", INDICACOES_CLINICAS)
+        
+        # Se selecionar "Outra", mostrar campo para adicionar nova indicação
+        if nova_indicacao == "Outra":
+            nova_indicacao_personalizada = st.text_input("Especifique a Indicação:", placeholder="Ex: Trombose de veia esplênica")
+            nova_indicacao_final = nova_indicacao_personalizada if nova_indicacao_personalizada else "Outra"
+        else:
+            nova_indicacao_final = nova_indicacao
+        
         nova_faixa = st.selectbox("Faixa Alvo RNI:", ["2.0-3.0", "2.5-3.5", "1.5-2.0"])
         nova_dose = st.number_input("Dose Semanal Inicial (mg):", value=35.0, step=2.5)
         novo_apoio = st.selectbox("Necessita de Apoio/Cuidador?", ["Não", "Sim"])
@@ -400,7 +440,7 @@ with st.sidebar.expander("➕ Cadastrar Novo Paciente"):
                 cursor.execute("""
                     INSERT INTO pacientes (name, age, contact, indication, target, weekly_dose, level, status, meds, needs_support, evolution)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (novo_nome.strip(), nova_idade, novo_contato, nova_indicacao, nova_faixa, nova_dose, "Médio", "Ativo", meds_iniciais, novo_apoio, ""))
+                """, (novo_nome.strip(), nova_idade, novo_contato, nova_indicacao_final, nova_faixa, nova_dose, "Médio", "Ativo", meds_iniciais, novo_apoio, ""))
                 conn.commit()
                 conn.close()
                 st.success("✅ Paciente cadastrado com sucesso!")
@@ -438,7 +478,7 @@ with st.sidebar.expander("💾 Gestão de Dados do Projeto"):
                 st.error(msg)
 
 # ==============================================================================
-# 7. MODO 1: DASHBOARD POPULACIONAL
+# 8. MODO 1: DASHBOARD POPULACIONAL
 # ==============================================================================
 if modo_visao == "🏠 Visão Geral (Dashboard)":
     st.title("📊 Painel Geral do Ambulatório de Anticoagulação")
@@ -637,7 +677,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         st.plotly_chart(fig_distribuicao_meds, use_container_width=True)
 
 # ==============================================================================
-# 8. MODO 2: FICHA DO PACIENTE
+# 9. MODO 2: FICHA DO PACIENTE
 # ==============================================================================
 else:
     conn = get_db_connection()
@@ -672,7 +712,21 @@ else:
                 edit_nome = st.text_input("Nome:", value=p['name'])
                 edit_idade = st.number_input("Idade:", value=int(p['age']))
                 edit_contato = st.text_input("Contato:", value=p['contact'])
-                edit_indicacao = st.selectbox("Indicação:", ["Fibrilação Atrial", "TVP/EP", "Prótese Valvar Metálica", "Outra"], index=["Fibrilação Atrial", "TVP/EP", "Prótese Valvar Metálica", "Outra"].index(p['indication']) if p['indication'] in ["Fibrilação Atrial", "TVP/EP", "Prótese Valvar Metálica", "Outra"] else 0)
+                
+                # Indicação atual pode não estar na lista
+                lista_indicacoes_edit = INDICACOES_CLINICAS.copy()
+                if p['indication'] not in lista_indicacoes_edit and p['indication'] != "Outra":
+                    lista_indicacoes_edit.insert(0, p['indication'])
+                
+                edit_indicacao = st.selectbox("Indicação:", lista_indicacoes_edit, index=0)
+                
+                # Se selecionar "Outra", mostrar campo para adicionar
+                if edit_indicacao == "Outra":
+                    edit_indicacao_personalizada = st.text_input("Especifique a Indicação:", value="")
+                    edit_indicacao_final = edit_indicacao_personalizada if edit_indicacao_personalizada else "Outra"
+                else:
+                    edit_indicacao_final = edit_indicacao
+                
                 edit_target = st.selectbox("Faixa Alvo:", ["2.0-3.0", "2.5-3.5", "1.5-2.0"], index=["2.0-3.0", "2.5-3.5", "1.5-2.0"].index(p['target']))
                 edit_level = st.selectbox("Complexidade:", ["Baixo", "Médio", "Alto"], index=["Baixo", "Médio", "Alto"].index(p['level']))
                 edit_dose = st.number_input("Dose Semanal Total (mg):", value=float(p['weekly_dose']), step=2.5)
@@ -682,7 +736,7 @@ else:
                     conn.execute("""
                         UPDATE pacientes SET name=?, age=?, contact=?, indication=?, target=?, level=?, weekly_dose=?, needs_support=?
                         WHERE id=?
-                    """, (edit_nome, edit_idade, edit_contato, edit_indicacao, edit_target, edit_level, edit_dose, edit_apoio, p['id']))
+                    """, (edit_nome, edit_idade, edit_contato, edit_indicacao_final, edit_target, edit_level, edit_dose, edit_apoio, p['id']))
                     conn.commit()
                     conn.close()
                     st.success("Dados atualizados!")
