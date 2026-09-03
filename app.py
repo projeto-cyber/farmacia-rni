@@ -21,11 +21,11 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
     :root {
-        --cor-primaria: #7A2331;        /* vermelho-vinho sóbrio — coração / sangue, sem ser alarmante */
+        --cor-primaria: #7A2331;
         --cor-primaria-escura: #5E1B26;
-        --cor-secundaria: #0F6E6A;      /* azul-clínico / verde-água — segurança e calma */
+        --cor-secundaria: #0F6E6A;
         --cor-secundaria-clara: #E6F5F4;
-        --cor-texto: #14181F;           /* quase-preto — alto contraste para leitura por idosos */
+        --cor-texto: #14181F;
         --cor-texto-suave: #4B5563;
         --cor-fundo-sutil: #F7F9FA;
         --cor-borda: #E4E7EB;
@@ -47,7 +47,6 @@ st.markdown("""
         border-right: 1px solid var(--cor-borda);
     }
 
-    /* --- Cabeçalho de marca (ícones de linha fina: coração + ECG) --- */
     .marca-cabecalho {
         display: flex; align-items: center; gap: 14px;
         padding: 4px 0 20px 0;
@@ -107,7 +106,21 @@ st.markdown("""
     .alert-high { background-color: #FBEAEC; border-color: var(--cor-primaria); color: #5E1B26; }
     .alert-mod  { background-color: #FFF6E9; border-color: #C9821A; color: #7A5209; }
 
-    /* Botões principais usando a cor primária */
+    /* Flash Cards */
+    .flash-card {
+        background: #FFFFFF;
+        border: 1px solid var(--cor-borda);
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        margin-bottom: 12px;
+        transition: transform 0.2s;
+    }
+    .flash-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+    }
+
     .stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] {
         background-color: var(--cor-primaria) !important;
         border-color: var(--cor-primaria) !important;
@@ -117,7 +130,6 @@ st.markdown("""
         border-color: var(--cor-primaria-escura) !important;
     }
 
-    /* --- Triângulos decorativos discretos nas bordas da página --- */
     .triangulo-decorativo { position: fixed; pointer-events: none; z-index: 0; opacity: 0.06; }
     .tri-1 { top: -70px; left: -70px; width: 240px; height: 240px; background: var(--cor-primaria); clip-path: polygon(0 0, 100% 0, 0 100%); }
     .tri-2 { top: -50px; right: -90px; width: 200px; height: 200px; background: var(--cor-secundaria); clip-path: polygon(100% 0, 100% 100%, 0 0); }
@@ -163,7 +175,7 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pacientes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
+            name TEXT NOT NULL UNIQUE,
             age INTEGER,
             contact TEXT,
             indication TEXT,
@@ -198,6 +210,13 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+def verificar_paciente_existente(nome):
+    """Verifica se já existe paciente com o mesmo nome"""
+    conn = get_db_connection()
+    paciente = conn.execute("SELECT id FROM pacientes WHERE LOWER(name) = LOWER(?)", (nome.strip(),)).fetchone()
+    conn.close()
+    return paciente is not None
+
 # ==============================================================================
 # 3. FUNÇÕES DE EXPORTAR E IMPORTAR PROJETO (BACKUP / RESTORE)
 # ==============================================================================
@@ -221,7 +240,6 @@ def importar_projeto_json(conteudo_json):
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         
-        # Limpa as tabelas atuais para substituir pelos dados importados
         cursor.execute("DELETE FROM historico_rni")
         cursor.execute("DELETE FROM pacientes")
         
@@ -373,16 +391,20 @@ with st.sidebar.expander("➕ Cadastrar Novo Paciente"):
         meds_iniciais = st.text_area("Medicamentos de Uso Contínuo:", placeholder="Ex: Amiodarona 200mg, Omeprazol 20mg, Losartana 50mg, AAS 100mg...")
         
         if st.form_submit_button("Salvar Paciente") and novo_nome:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO pacientes (name, age, contact, indication, target, weekly_dose, level, status, meds, needs_support, evolution)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (novo_nome, nova_idade, novo_contato, nova_indicacao, nova_faixa, nova_dose, "Médio", "Ativo", meds_iniciais, novo_apoio, ""))
-            conn.commit()
-            conn.close()
-            st.success("Paciente cadastrado!")
-            st.rerun()
+            # Verificar se paciente já existe
+            if verificar_paciente_existente(novo_nome):
+                st.error(f"⚠️ Paciente '{novo_nome}' já está cadastrado no sistema!")
+            else:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO pacientes (name, age, contact, indication, target, weekly_dose, level, status, meds, needs_support, evolution)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (novo_nome.strip(), nova_idade, novo_contato, nova_indicacao, nova_faixa, nova_dose, "Médio", "Ativo", meds_iniciais, novo_apoio, ""))
+                conn.commit()
+                conn.close()
+                st.success("✅ Paciente cadastrado com sucesso!")
+                st.rerun()
 
 st.sidebar.markdown("---")
 
@@ -390,7 +412,6 @@ st.sidebar.markdown("---")
 with st.sidebar.expander("💾 Gestão de Dados do Projeto"):
     st.caption("Salve ou restaure todo o projeto (pacientes, histórico de RNI e evoluções).")
     
-    # 1. Exportar
     json_backup = exportar_projeto_json()
     nome_arq_backup = f"backup_ambulatorio_rni_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     
@@ -405,7 +426,6 @@ with st.sidebar.expander("💾 Gestão de Dados do Projeto"):
     
     st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
     
-    # 2. Importar
     arquivo_upload = st.file_uploader("📤 Importar Backup do Projeto", type=["json"], help="Selecione um arquivo de backup previamente exportado.")
     if arquivo_upload is not None:
         if st.button("🔄 Restaurar Dados do Arquivo", use_container_width=True, type="primary"):
@@ -435,9 +455,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     lista_pacientes = [dict(p) for p in pacientes_raw]
     
     total_pacientes = len(lista_pacientes)
-    idosos = sum(1 for p in lista_pacientes if 60 <= p['age'] < 79)
+    idosos = sum(1 for p in lista_pacientes if 60 <= p['age'] < 80)
     idosos_mais_velhos = sum(1 for p in lista_pacientes if p['age'] >= 80)
-    com_apoio = sum(1 for p in lista_pacientes if p['needs_support'] == "Sim")
     
     polimedicados = 0
     interagentes_dict = {}
@@ -465,9 +484,9 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     # METRICAS RÁPIDAS
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Total de Pacientes", total_pacientes)
-    m2.metric("Idosos (≥ 60 anos e < 70 anos)", f"{idosos} ({idosos/total_pacientes*100:.0f}%)" if total_pacientes > 0 else f"{idosos} (0%)")
-    m3.metric("Very Elderly (≥ 80 anos)", f"{idosos_mais_velhos} ({idosos_mais_velhos/total_pacientes*100:.0f}%)" if total_pacientes > 0 else f"{idosos_mais_velhos} (0%)")
-    m4.metric("Polimedicados (≥ 5 meds)", f"{polimedicados} ({polimedicados/total_pacientes*100:.0f}%)")
+    m2.metric("Idosos (60-79 anos)", f"{idosos} ({idosos/total_pacientes*100:.0f}%)" if total_pacientes > 0 else "0 (0%)")
+    m3.metric("Very Elderly (≥ 80 anos)", f"{idosos_mais_velhos} ({idosos_mais_velhos/total_pacientes*100:.0f}%)" if total_pacientes > 0 else "0 (0%)")
+    m4.metric("Polimedicados (≥ 5 meds)", f"{polimedicados} ({polimedicados/total_pacientes*100:.0f}%)" if total_pacientes > 0 else "0 (0%)")
     
     # Contar indicações
     indicacoes_dict = {}
@@ -475,7 +494,6 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         ind = p['indication'] or "Não especificada"
         indicacoes_dict[ind] = indicacoes_dict.get(ind, 0) + 1
     
-    # Mostrar total de indicações diferentes
     m5.metric("Indicações Clínicas", f"{len(indicacoes_dict)} tipos")
 
     st.markdown("---")
@@ -489,7 +507,6 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     col_ind1, col_ind2 = st.columns(2)
     
     with col_ind1:
-        # Gráfico de barras
         fig_ind = px.bar(
             df_indicacoes,
             x='Indicação',
@@ -508,7 +525,6 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         st.plotly_chart(fig_ind, use_container_width=True)
     
     with col_ind2:
-        # Gráfico de pizza
         fig_ind_pie = px.pie(
             df_indicacoes,
             names='Indicação',
@@ -566,7 +582,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         
         df_idade = pd.DataFrame({
             "Faixa Etária": ["Adultos (<60 anos)", "Idosos (60-79 anos)", "Idosos Mais Velhos (80+ anos)"],
-            "Pacientes": [faixa_nao_idoso, faixa_idoso, faixa_muito_idoso]
+            "Pacientes": [faixa_nao_idoso, faixa_idoso, faixa_idoso_mais_velho]
         })
         fig_idade = px.bar(df_idade, x="Faixa Etária", y="Pacientes", color="Faixa Etária", text="Pacientes", color_discrete_sequence=['#0F6E6A', '#C9821A', '#7A2331'])
         fig_idade.update_layout(showlegend=False, margin=dict(t=20, b=20, l=20, r=20), height=300)
@@ -575,8 +591,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
     with c_g4:
         st.subheader("💊 Distribuição por Quantidade de Medicamentos")
         
-        # Contar pacientes 
-        pacientes_apenas_Varfarina = 0
+        # Contar pacientes por quantidade de medicamentos
+        pacientes_apenas_varfarina = 0
         pacientes_1_med = 0
         pacientes_2_meds = 0
         pacientes_3_meds = 0
@@ -585,9 +601,9 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
         
         for p in lista_pacientes:
             qtd_meds_paciente = contar_medicamentos(p['meds'] or "")
-            if qtd_meds_paciente ==0
-                pacientes_apenas_Varfarina
-            if qtd_meds_paciente == 1:
+            if qtd_meds_paciente == 0:
+                pacientes_apenas_varfarina += 1
+            elif qtd_meds_paciente == 1:
                 pacientes_1_med += 1
             elif qtd_meds_paciente == 2:
                 pacientes_2_meds += 1
@@ -599,8 +615,8 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
                 pacientes_5_ou_mais += 1
         
         df_distribuicao_meds = pd.DataFrame({
-            "Quantidade de Medicamentos": ["Apenas Varfarina", "1 medicamento", "2 medicamentos", "3 medicamentos", "4 medicamentos", "5 ou mais medicamentos"],
-            "Pacientes": [pacientes_apenas_Varfarina, pacientes_1_med, pacientes_2_meds, pacientes_3_meds, pacientes_4_meds, pacientes_5_ou_mais]
+            "Quantidade de Medicamentos": ["Apenas Varfarina", "1 medicamento", "2 medicamentos", "3 medicamentos", "4 medicamentos", "5 ou mais"],
+            "Pacientes": [pacientes_apenas_varfarina, pacientes_1_med, pacientes_2_meds, pacientes_3_meds, pacientes_4_meds, pacientes_5_ou_mais]
         })
         
         fig_distribuicao_meds = px.bar(
@@ -609,7 +625,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             y="Pacientes", 
             color="Quantidade de Medicamentos", 
             text="Pacientes",
-            color_discrete_sequence=['#0F6E6A', '#3B8FA6', '#C9821A', '#A14A5A', '#7A2331']
+            color_discrete_sequence=['#0F6E6A', '#3B8FA6', '#C9821A', '#A14A5A', '#7A2331', '#5E1B26']
         )
         fig_distribuicao_meds.update_layout(
             showlegend=False, 
@@ -619,7 +635,7 @@ if modo_visao == "🏠 Visão Geral (Dashboard)":
             xaxis_title=""
         )
         st.plotly_chart(fig_distribuicao_meds, use_container_width=True)
-         
+
 # ==============================================================================
 # 8. MODO 2: FICHA DO PACIENTE
 # ==============================================================================
@@ -698,7 +714,7 @@ else:
 
     with col_info1:
         st.markdown(f"""
-        <div class="patient-card">
+        <div class="flash-card">
             <div class="info-label">Dados Demográficos</div>
             <div class="info-value">Idade: {p['age']} anos{tag_idoso}</div>
             <div class="info-value">Contato: {p['contact'] or 'Não informado'}</div>
@@ -711,7 +727,7 @@ else:
     with col_info2:
         qtd_m = contar_medicamentos(p['meds'])
         st.markdown(f"""
-        <div class="patient-card">
+        <div class="flash-card">
             <div class="info-label">Manejo Terapêutico</div>
             <div class="info-value">Indicação: {p['indication']}</div>
             <div class="info-value">Faixa Alvo: {p['target']}</div>
@@ -722,7 +738,7 @@ else:
 
     with col_info3:
         st.markdown(f"""
-        <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+        <div class="flash-card">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <span class="info-label">TTR (Rosendaal)</span>
                 <span style="font-size: 0.75rem; font-weight: 600; color: {cor_ttr}; background: {bg_badge}; padding: 2px 8px; border-radius: 9999px;">{status_ttr}</span>
